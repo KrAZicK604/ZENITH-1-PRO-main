@@ -1,0 +1,27 @@
+name: Streamlit smoke test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install uv and Python 3.14
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+          python-version: "3.14"
+
+      - name: Run Streamlit entry-point smoke test
+        run: uv run --locked python -m unittest discover -s tests -v
