@@ -17,9 +17,9 @@
       ]
     }
   },
-  "updateContentCommand": "if [ -f packages.txt ]; then sudo apt update && sudo apt upgrade -y && sudo xargs apt install -y < packages.txt; fi; if ! command -v uv >/dev/null 2>&1; then curl -LsSf https://astral.sh/uv/install.sh | sh; fi; UV_BIN=$(command -v uv || echo \"$HOME/.local/bin/uv\"); UV_PROJECT_ENVIRONMENT=\"$HOME/.venvs/blank-app-template\" \"$UV_BIN\" sync",
+  "updateContentCommand": "if [ -f packages.txt ]; then sudo apt update && sudo apt upgrade -y && sudo xargs apt install -y < packages.txt; fi; if ! command -v uv >/dev/null 2>&1; then curl -LsSf https://astral.sh/uv/install.sh | sh; fi; UV_BIN=$(command -v uv || echo "$HOME/.local/bin/uv"); UV_PROJECT_ENVIRONMENT="$HOME/.venvs/zenith-1-pro" "$UV_BIN" sync --locked",
   "postAttachCommand": {
-    "server": "UV_BIN=$(command -v uv || echo \"$HOME/.local/bin/uv\"); UV_PROJECT_ENVIRONMENT=\"$HOME/.venvs/blank-app-template\" \"$UV_BIN\" run streamlit run streamlit_app.py --server.enableCORS false --server.enableXsrfProtection false"
+    "server": "UV_BIN=$(command -v uv || echo "$HOME/.local/bin/uv"); UV_PROJECT_ENVIRONMENT="$HOME/.venvs/zenith-1-pro" "$UV_BIN" run --locked streamlit run streamlit_app.py"
   },
   "portsAttributes": {
     "8501": {
