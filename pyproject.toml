@@ -1,7 +1,7 @@
 [project]
-name = "blank-app-template"
+name = "zenith-1-pro"
 version = "0.1.0"
-description = "A simple Streamlit app template."
+description = "A deterministic Streamlit lab for exploring logistic-map dynamics."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
