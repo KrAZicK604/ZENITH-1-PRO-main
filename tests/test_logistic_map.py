@@ -16,6 +16,15 @@ class LogisticOrbitTest(unittest.TestCase):
         self.assertEqual(len(first), 101)
         self.assertTrue(all(0.0 <= state <= 1.0 for state in first))
 
+    def test_accepts_ui_boundaries_at_maximum_work(self) -> None:
+        for rate in (0.0, 4.0):
+            for initial_state in (0.001, 0.999):
+                with self.subTest(rate=rate, initial_state=initial_state):
+                    orbit = logistic_orbit(rate, initial_state, MAX_ITERATIONS)
+
+                    self.assertEqual(len(orbit), MAX_ITERATIONS + 1)
+                    self.assertTrue(all(0.0 <= state <= 1.0 for state in orbit))
+
     def test_rejects_invalid_rate(self) -> None:
         for rate in (-0.01, 4.01, math.inf, math.nan):
             with self.subTest(rate=rate):

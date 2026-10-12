@@ -14,11 +14,17 @@ to initial conditions.
 
 ## Run locally
 
-Prerequisite: install `uv` if you don't already have it.
+Prerequisite: install `uv` through a trusted package manager if you don't
+already have it. For example, with `pipx`:
 
 ```sh
-curl -LsSf https://astral.sh/uv/install.sh | sh
+pipx install uv
+uv --version
 ```
+
+See the [official installation guide](https://docs.astral.sh/uv/getting-started/installation/)
+for other platforms. Avoid piping an unverified remote installer directly into
+a shell.
 
 1. Sync the dependencies
 
