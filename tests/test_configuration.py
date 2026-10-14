@@ -1,10 +1,14 @@
 import json
+import re
 import tomllib
 import unittest
 from pathlib import Path
 
 
 REPOSITORY_ROOT = Path(__file__).parents[1]
+UV_VERSION = "0.13.0"
+BANDIT_VERSION = "1.9.4"
+PIP_AUDIT_VERSION = "2.10.1"
 
 
 class ConfigurationTest(unittest.TestCase):
@@ -20,7 +24,7 @@ class ConfigurationTest(unittest.TestCase):
         update_command = config["updateContentCommand"]
         server_command = config["postAttachCommand"]["server"]
 
-        self.assertIn("pipx install uv", update_command)
+        self.assertIn(f"pipx install --force uv=={UV_VERSION}", update_command)
         self.assertNotIn("curl", update_command)
         self.assertNotIn("| sh", update_command)
         self.assertIn("UV_PROJECT_ENVIRONMENT=", update_command)
@@ -39,3 +43,25 @@ class ConfigurationTest(unittest.TestCase):
         self.assertIs(config["server"]["enableCORS"], True)
         self.assertIs(config["server"]["enableXsrfProtection"], True)
         self.assertIs(config["browser"]["gatherUsageStats"], False)
+
+    def test_ci_enforces_reproducible_security_gates(self) -> None:
+        workflow_path = (
+            REPOSITORY_ROOT / ".github" / "workflows" / "smoke-test.yml"
+        )
+        workflow = workflow_path.read_text(encoding="utf-8")
+
+        self.assertIn("permissions:\n  contents: read", workflow)
+        self.assertIn("persist-credentials: false", workflow)
+        self.assertIn(f'version: "{UV_VERSION}"', workflow)
+        self.assertIn("uv lock --check", workflow)
+        self.assertIn(f"bandit=={BANDIT_VERSION}", workflow)
+        self.assertIn(f"pip-audit=={PIP_AUDIT_VERSION}", workflow)
+        self.assertIn("pip-audit --strict", workflow)
+        self.assertRegex(
+            workflow,
+            re.compile(r"uses: actions/checkout@[0-9a-f]{40}"),
+        )
+        self.assertRegex(
+            workflow,
+            re.compile(r"uses: astral-sh/setup-uv@[0-9a-f]{40}"),
+        )
