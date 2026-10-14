@@ -9,6 +9,8 @@ REPOSITORY_ROOT = Path(__file__).parents[1]
 UV_VERSION = "0.13.0"
 BANDIT_VERSION = "1.9.4"
 PIP_AUDIT_VERSION = "2.10.1"
+CI_RUNNER = "ubuntu-24.04"
+CI_TIMEOUT_MINUTES = 10
 
 
 class ConfigurationTest(unittest.TestCase):
@@ -52,6 +54,8 @@ class ConfigurationTest(unittest.TestCase):
 
         self.assertIn("permissions:\n  contents: read", workflow)
         self.assertIn("persist-credentials: false", workflow)
+        self.assertIn(f"runs-on: {CI_RUNNER}", workflow)
+        self.assertIn(f"timeout-minutes: {CI_TIMEOUT_MINUTES}", workflow)
         self.assertIn(f'version: "{UV_VERSION}"', workflow)
         self.assertIn("uv lock --check", workflow)
         self.assertIn(f"bandit=={BANDIT_VERSION}", workflow)
