@@ -1,10 +1,17 @@
 import unittest
+from importlib.metadata import version as package_version
 from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
 
+STREAMLIT_VERSION = "1.65.0"
+
+
 class StreamlitAppSmokeTest(unittest.TestCase):
+    def test_runtime_uses_locked_streamlit_version(self) -> None:
+        self.assertEqual(package_version("streamlit"), STREAMLIT_VERSION)
+
     def test_entry_point_renders_without_exceptions(self) -> None:
         app_path = Path(__file__).parents[1] / "streamlit_app.py"
         app = AppTest.from_file(str(app_path)).run(timeout=10)
