@@ -644,4 +644,4 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "streamlit", specifier = ">=1.61.1" }]
+requires-dist = [{ name = "streamlit", specifier = ">=1.61.1,<2" }]
