@@ -11,6 +11,7 @@ BANDIT_VERSION = "1.9.4"
 PIP_AUDIT_VERSION = "2.10.1"
 CI_RUNNER = "ubuntu-24.04"
 CI_TIMEOUT_MINUTES = 10
+SECURITY_GROUP = "security"
 
 
 class ConfigurationTest(unittest.TestCase):
@@ -46,6 +47,20 @@ class ConfigurationTest(unittest.TestCase):
         self.assertIs(config["server"]["enableXsrfProtection"], True)
         self.assertIs(config["browser"]["gatherUsageStats"], False)
 
+    def test_security_tools_are_lock_managed(self) -> None:
+        project_path = REPOSITORY_ROOT / "pyproject.toml"
+
+        with project_path.open("rb") as project_file:
+            project = tomllib.load(project_file)
+
+        self.assertCountEqual(
+            project["dependency-groups"][SECURITY_GROUP],
+            [
+                f"bandit=={BANDIT_VERSION}",
+                f"pip-audit=={PIP_AUDIT_VERSION}",
+            ],
+        )
+
     def test_ci_enforces_reproducible_security_gates(self) -> None:
         workflow_path = (
             REPOSITORY_ROOT / ".github" / "workflows" / "smoke-test.yml"
@@ -58,9 +73,16 @@ class ConfigurationTest(unittest.TestCase):
         self.assertIn(f"timeout-minutes: {CI_TIMEOUT_MINUTES}", workflow)
         self.assertIn(f'version: "{UV_VERSION}"', workflow)
         self.assertIn("uv lock --check", workflow)
-        self.assertIn(f"bandit=={BANDIT_VERSION}", workflow)
-        self.assertIn(f"pip-audit=={PIP_AUDIT_VERSION}", workflow)
-        self.assertIn("pip-audit --strict", workflow)
+        self.assertIn(
+            f"uv run --locked --group {SECURITY_GROUP} bandit",
+            workflow,
+        )
+        self.assertIn(
+            f"uv run --locked --group {SECURITY_GROUP} pip-audit --strict "
+            "--path .venv/lib/python3.14/site-packages",
+            workflow,
+        )
+        self.assertNotIn("uvx ", workflow)
         self.assertRegex(
             workflow,
             re.compile(r"uses: actions/checkout@[0-9a-f]{40}"),
