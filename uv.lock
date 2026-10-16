@@ -1026,7 +1026,7 @@ security = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "streamlit", specifier = ">=1.65,<1.66" }]
+requires-dist = [{ name = "streamlit", specifier = ">=1.61.1,<2" }]
 
 [package.metadata.requires-dev]
 security = [
