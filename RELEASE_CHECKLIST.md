@@ -19,7 +19,7 @@ Run the same locked commands used by CI:
 ```sh
 uv lock --check
 uv run --locked python -m unittest discover -s tests -v
-uv run --locked --group security bandit -q -r logistic_map.py streamlit_app.py tests
+uv run --locked --group security bandit -q -r . -x ./.venv,./.git
 uv run --locked --group security pip-audit --strict --path .venv/lib/python3.14/site-packages --progress-spinner off
 ```
 
