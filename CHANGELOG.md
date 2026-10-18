@@ -12,6 +12,11 @@ and version numbers follow [Semantic Versioning](https://semver.org/).
 - Coordinated vulnerability-disclosure guidance.
 - A reproducible release checklist for the first versioned release.
 
+### Security
+
+- Expanded Bandit to scan every repository Python file and strengthened the
+  configuration tests to reject unpinned external GitHub Actions.
+
 ## [0.1.0] - Unreleased
 
 ### Added
