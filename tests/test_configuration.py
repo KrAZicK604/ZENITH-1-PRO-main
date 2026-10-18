@@ -12,6 +12,10 @@ PIP_AUDIT_VERSION = "2.10.1"
 CI_RUNNER = "ubuntu-24.04"
 CI_TIMEOUT_MINUTES = 10
 SECURITY_GROUP = "security"
+BANDIT_COMMAND = (
+    f"uv run --locked --group {SECURITY_GROUP} bandit "
+    "-q -r . -x ./.venv,./.git"
+)
 
 
 class ConfigurationTest(unittest.TestCase):
@@ -73,21 +77,21 @@ class ConfigurationTest(unittest.TestCase):
         self.assertIn(f"timeout-minutes: {CI_TIMEOUT_MINUTES}", workflow)
         self.assertIn(f'version: "{UV_VERSION}"', workflow)
         self.assertIn("uv lock --check", workflow)
-        self.assertIn(
-            f"uv run --locked --group {SECURITY_GROUP} bandit",
-            workflow,
-        )
+        self.assertIn(BANDIT_COMMAND, workflow)
         self.assertIn(
             f"uv run --locked --group {SECURITY_GROUP} pip-audit --strict "
             "--path .venv/lib/python3.14/site-packages",
             workflow,
         )
         self.assertNotIn("uvx ", workflow)
-        self.assertRegex(
+        external_actions = re.findall(
+            r"^\s*uses:\s*([^\s#]+)",
             workflow,
-            re.compile(r"uses: actions/checkout@[0-9a-f]{40}"),
+            flags=re.MULTILINE,
         )
-        self.assertRegex(
-            workflow,
-            re.compile(r"uses: astral-sh/setup-uv@[0-9a-f]{40}"),
-        )
+        self.assertTrue(external_actions)
+        for action in external_actions:
+            if action.startswith("./"):
+                continue
+            with self.subTest(action=action):
+                self.assertRegex(action, r"^[^@]+@[0-9a-f]{40}$")
