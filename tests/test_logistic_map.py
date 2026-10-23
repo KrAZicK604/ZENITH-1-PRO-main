@@ -1,7 +1,7 @@
 import math
 import unittest
 
-from logistic_map import MAX_ITERATIONS, logistic_orbit
+from logistic_map import MAX_ITERATIONS, logistic_orbit, lyapunov_exponent
 
 
 class LogisticOrbitTest(unittest.TestCase):
@@ -53,3 +53,33 @@ class LogisticOrbitTest(unittest.TestCase):
             with self.subTest(arguments=arguments):
                 with self.assertRaises(TypeError):
                     logistic_orbit(*arguments)
+
+
+class LyapunovExponentTest(unittest.TestCase):
+    def test_known_exponent_for_fixed_orbit(self) -> None:
+        exponent = lyapunov_exponent(4.0, 0.25, 20, discard=5)
+
+        self.assertAlmostEqual(exponent, math.log(2.0), places=12)
+
+    def test_distinguishes_contracting_and_chaotic_regimes(self) -> None:
+        contracting = lyapunov_exponent(2.5, 0.2, 200, discard=100)
+        chaotic = lyapunov_exponent(4.0, 0.25, 200, discard=100)
+
+        self.assertLess(contracting, 0.0)
+        self.assertGreater(chaotic, 0.0)
+
+    def test_zero_derivative_returns_negative_infinity(self) -> None:
+        exponent = lyapunov_exponent(4.0, 0.5, 10)
+
+        self.assertEqual(exponent, float("-inf"))
+
+    def test_rejects_invalid_discard(self) -> None:
+        for discard in (-1, 10):
+            with self.subTest(discard=discard):
+                with self.assertRaises(ValueError):
+                    lyapunov_exponent(3.9, 0.2, 10, discard=discard)
+
+        for discard in (True, 1.5):
+            with self.subTest(discard=discard):
+                with self.assertRaises(TypeError):
+                    lyapunov_exponent(3.9, 0.2, 10, discard=discard)
