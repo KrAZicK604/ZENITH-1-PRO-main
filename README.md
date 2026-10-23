@@ -9,7 +9,9 @@ to initial conditions.
 
 - evolves `x[n + 1] = r * x[n] * (1 - x[n])` with bounded controls;
 - compares a primary orbit with a shadow orbit offset by `1e-9`;
-- visualizes both trajectories and their final divergence;
+- visualizes both trajectories and their divergence on a logarithmic scale;
+- estimates a finite-time Lyapunov exponent after a bounded transient and
+  labels the observed regime without claiming long-term proof;
 - performs no network requests, file writes, or real-world execution.
 
 ## Run locally
