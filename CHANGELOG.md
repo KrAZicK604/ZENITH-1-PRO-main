@@ -11,6 +11,7 @@ and version numbers follow [Semantic Versioning](https://semver.org/).
 
 - Coordinated vulnerability-disclosure guidance.
 - A reproducible release checklist for the first versioned release.
+- Bounded finite-time Lyapunov analysis and logarithmic divergence diagnostics.
 
 ### Security
 
@@ -29,7 +30,7 @@ and version numbers follow [Semantic Versioning](https://semver.org/).
 
 ### Security
 
-- Streamlit `1.66.0` runtime enforcement while retaining the declared
+- Streamlit `1.66.1` runtime enforcement while retaining the declared
   `streamlit>=1.61.1,<2` compatibility policy.
 - Lock-managed Bandit `1.9.4` and pip-audit `2.10.1` checks.
 - Immutable GitHub Action revisions, read-only workflow permissions, and
