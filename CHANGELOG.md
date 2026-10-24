@@ -11,6 +11,7 @@ and version numbers follow [Semantic Versioning](https://semver.org/).
 
 - Coordinated vulnerability-disclosure guidance.
 - A reproducible release checklist for the first versioned release.
+- Bounded finite-time Lyapunov analysis and logarithmic divergence diagnostics.
 
 ### Security
 

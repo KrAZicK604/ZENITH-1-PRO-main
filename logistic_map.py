@@ -1,6 +1,6 @@
 """Deterministic logistic-map simulation with bounded inputs."""
 
-from math import isfinite
+from math import fsum, isfinite, log
 from numbers import Real
 
 MAX_ITERATIONS = 1_000
@@ -42,3 +42,35 @@ def logistic_orbit(
         orbit.append(state)
 
     return orbit
+
+
+def lyapunov_exponent(
+    rate: float,
+    initial_state: float,
+    iterations: int,
+    *,
+    discard: int = 0,
+) -> float:
+    """Return a bounded finite-time Lyapunov exponent estimate.
+
+    ``discard`` removes an initial transient from the estimate while keeping
+    the total work bounded by :data:`MAX_ITERATIONS`. A zero derivative means
+    complete local contraction and is represented by negative infinity.
+    """
+
+    if isinstance(discard, bool) or not isinstance(discard, int):
+        raise TypeError("discard must be an integer")
+
+    orbit = logistic_orbit(rate, initial_state, iterations)
+    if not 0 <= discard < iterations:
+        raise ValueError("discard must be between 0 and iterations - 1")
+
+    rate = float(rate)
+    logarithms: list[float] = []
+    for state in orbit[discard:-1]:
+        derivative_magnitude = abs(rate * (1.0 - 2.0 * state))
+        if derivative_magnitude == 0.0:
+            return float("-inf")
+        logarithms.append(log(derivative_magnitude))
+
+    return fsum(logarithms) / len(logarithms)
