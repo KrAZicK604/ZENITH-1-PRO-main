@@ -25,7 +25,7 @@ and version numbers follow [Semantic Versioning](https://semver.org/).
 - Deterministic logistic-map evolution with bounded inputs.
 - Primary and shadow-orbit comparison with visualized divergence.
 - Streamlit entry-point and boundary smoke tests.
-- - Strict configuration tests for the development container and Streamlit
+- Strict configuration tests for the development container and Streamlit
   security settings.
 
 ### Security
