@@ -1,16 +1,11 @@
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and version numbers follow [Semantic Versioning](https://semver.org/).
-
 ## [Unreleased]
 
 ### Added
 - Bounded finite-time Lyapunov analysis and logarithmic divergence diagnostics.
-### Security
+- Coordinated vulnerability-disclosure guidance.
+- A reproducible release checklist for the first versioned release.
 
+### Security
 - Expanded Bandit to scan every repository Python file and strengthened the
   configuration tests to reject unpinned external GitHub Actions.
 
