@@ -8,11 +8,7 @@ and version numbers follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-
-- Coordinated vulnerability-disclosure guidance.
-- A reproducible release checklist for the first versioned release.
 - Bounded finite-time Lyapunov analysis and logarithmic divergence diagnostics.
-
 ### Security
 
 - Expanded Bandit to scan every repository Python file and strengthened the
@@ -21,7 +17,7 @@ and version numbers follow [Semantic Versioning](https://semver.org/).
 ## [0.1.0] - Unreleased
 
 ### Added
-
+- Bounded finite-time Lyapunov analysis and logarithmic divergence diagnostics.
 - Deterministic logistic-map evolution with bounded inputs.
 - Primary and shadow-orbit comparison with visualized divergence.
 - Streamlit entry-point and boundary smoke tests.
