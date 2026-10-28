@@ -83,6 +83,30 @@ class ConfigurationTest(unittest.TestCase):
             "--path .venv/lib/python3.14/site-packages",
             workflow,
         )
+        required_unique_fragments = [
+            "      - name: Check out repository\n",
+            "      - name: Install uv and Python 3.14\n",
+            "      - name: Verify lockfile\n",
+            "      - name: Run Streamlit entry-point smoke test\n",
+            "      - name: Run repository-wide static security scan\n",
+            "      - name: Audit locked dependencies \n",
+            "        run: uv lock --check\n",
+            (
+                "        run: uv run --locked python -m unittest "
+                "discover -s tests -v\n"
+            ),
+            f"        run: {BANDIT_COMMAND}\n",
+            (
+                f"        run: uv run --locked --group {SECURITY_GROUP} "
+                "pip-audit --strict "
+                "--path .venv/lib/python3.14/site-packages "
+                "--progress-spinner off\n"
+            ),
+        ]
+        for fragment in required_unique_fragments:
+            with self.subTest(unique_fragment=fragment):
+                self.assertEqual(workflow.count(fragment), 1)
+
         self.assertNotIn("uvx ", workflow)
         external_actions = re.findall(
             r"^\s*uses:\s*([^\s#]+)",
@@ -93,5 +117,6 @@ class ConfigurationTest(unittest.TestCase):
         for action in external_actions:
             if action.startswith("./"):
                 continue
+            self.assertEqual(external_actions.count(action), 1)
             with self.subTest(action=action):
                 self.assertRegex(action, r"^[^@]+@[0-9a-f]{40}$")
