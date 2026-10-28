@@ -1,3 +1,4 @@
+
 name: Streamlit smoke test
 
 on:
@@ -14,6 +15,7 @@ jobs:
   smoke-test:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -35,6 +37,6 @@ jobs:
 
       - name: Run repository-wide static security scan
         run: uv run --locked --group security bandit -q -r . -x ./.venv,./.git
-        
-      - name: Audit locked dependencies 
+
+      - name: Audit locked dependencies
         run: uv run --locked --group security pip-audit --strict --path .venv/lib/python3.14/site-packages --progress-spinner off
