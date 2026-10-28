@@ -1,51 +1,19 @@
-name: Streamlit smoke test
-
-on:
-  workflow_dispatch:
-  pull_request:
-  push:
-    branches:
-      - main
-
-permissions:
-  contents: read
-
-jobs:
-  smoke-test:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-
-      - name: Install uv and Python 3.14
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
-        with:
-          enable-cache: true
-          python-version: "3.14"
-          version: "0.13.0"
-
-      - name: Verify lockfile
-        run: uv lock --check
-
-      - name: Run Streamlit entry-point smoke test
-        run: uv run --locked python -m unittest discover -s tests -v
-
-      - name: Run repository-wide static security scan
-        run: uv run --locked --group security bandit -q -r . -x ./.venv,./.git
-
-      - name: Audit locked dependencies
-        run: uv run --locked --group security pip-audit --strict --path .venv/lib/python3.14/site-packages --progress-spinner off
-
-      - name: Run Streamlit entry-point smoke test
-        run: uv run --locked python -m unittest discover -s tests -v
-
-      - name: Run repository-wide static security scan
-        run: uv run --locked --group security bandit -q -r . -x ./.venv,./.git
-
-      - name: Audit locked dependencies
+--- a/.github/workflows/smoke-test.yml
++++ b/.github/workflows/smoke-test.yml
+@@ -43,14 +43,2 @@
+       - name: Audit locked dependencies
+         run: uv run --locked --group security pip-audit --strict --path .venv/lib/python3.14/site-packages --progress-spinner off
+-
+-      - name: Run Streamlit entry-point smoke test
+-        run: uv run --locked python -m unittest discover -s tests -v
+-
+-      - name: Run repository-wide static security scan
+-        run: uv run --locked --group security bandit -q -r . -x ./.venv,./.git
+-
+-      - name: Audit locked dependencies
+-        run: uv run --locked --group security pip-audit --strict --path .venv/lib/python3.14/site-packages --progress-spinner off
+-      - name: Audit locked dependencies
+-        run: uv run --locked --group security pip-audit --strict --path .venv/lib/python3.14/site-packages --progress-spinner off
         run: uv run --locked --group security pip-audit --strict --path .venv/lib/python3.14/site-packages --progress-spinner off
       - name: Audit locked dependencies
         run: uv run --locked --group security pip-audit --strict --path .venv/lib/python3.14/site-packages --progress-spinner off
