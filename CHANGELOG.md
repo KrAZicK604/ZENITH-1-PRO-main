@@ -17,7 +17,7 @@ and version numbers follow [Semantic Versioning](https://semver.org/).
 - Expanded Bandit to scan every repository Python file and strengthened the
   configuration tests to reject unpinned external GitHub Actions.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-10-28
 
 ### Added
 
@@ -37,5 +37,5 @@ and version numbers follow [Semantic Versioning](https://semver.org/).
   disabled checkout credential persistence.
 - Locked dependency validation through `uv lock --check` and `uv run --locked`.
 
-`0.1.0` remains unreleased until the release checklist is completed against a
-specific protected-branch commit.
+[Unreleased]: https://github.com/KrAZicK604/ZENITH-1-PRO-main/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/KrAZicK604/ZENITH-1-PRO-main/releases/tag/v0.1.0
