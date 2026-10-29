@@ -1,3 +1,4 @@
+import tomllib
 import unittest
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -5,7 +6,11 @@ from pathlib import Path
 from streamlit.testing.v1 import AppTest
 
 
-STREAMLIT_VERSION = "1.65.0"
+STREAMLIT_VERSION = next(
+    package["version"]
+    for package in tomllib.loads(Path("uv.lock").read_text(encoding="utf-8"))["package"]
+    if package["name"] == "streamlit"
+)
 
 
 class StreamlitAppSmokeTest(unittest.TestCase):
