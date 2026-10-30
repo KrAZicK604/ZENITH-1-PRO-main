@@ -1,6 +1,8 @@
+from math import log10
+
 import streamlit as st
 
-from logistic_map import logistic_orbit
+from logistic_map import logistic_orbit, lyapunov_exponent
 
 st.set_page_config(page_title="ZENITH-1-PRO", page_icon="🌀")
 
@@ -44,6 +46,26 @@ divergence = [
     abs(primary - shadow)
     for primary, shadow in zip(primary_orbit, shadow_orbit, strict=True)
 ]
+transient_iterations = min(100, iterations // 2)
+exponent = lyapunov_exponent(
+    rate,
+    initial_state,
+    iterations,
+    discard=transient_iterations,
+)
+
+if exponent == float("-inf"):
+    exponent_display = "−∞"
+    regime = "Contracting / stable"
+elif exponent > 1e-3:
+    exponent_display = f"{exponent:.6f}"
+    regime = "Chaotic"
+elif exponent < -1e-3:
+    exponent_display = f"{exponent:.6f}"
+    regime = "Contracting / periodic"
+else:
+    exponent_display = f"{exponent:.6f}"
+    regime = "Near a transition"
 
 st.subheader("Orbit comparison")
 st.write(
@@ -63,6 +85,31 @@ divergence_column.metric("Final divergence", f"{divergence[-1]:.3e}")
 range_column.metric(
     "Observed range",
     f"{min(primary_orbit):.3f} – {max(primary_orbit):.3f}",
+)
+
+st.subheader("Chaos diagnostics")
+st.write(
+    "The finite-time Lyapunov exponent measures average local expansion after "
+    f"discarding {transient_iterations} transient iterations. Positive values "
+    "indicate sensitive chaos; negative values indicate contraction. Values "
+    "near zero mark a transition and are not, by themselves, proof of a "
+    "long-term regime."
+)
+exponent_column, regime_column = st.columns(2)
+exponent_column.metric("Lyapunov exponent", exponent_display)
+regime_column.metric("Finite-time regime", regime)
+
+divergence_floor = 1e-16
+st.line_chart(
+    {
+        "log10 absolute divergence": [
+            log10(max(value, divergence_floor)) for value in divergence
+        ]
+    }
+)
+st.caption(
+    "Divergence is displayed as log10 absolute divergence with a numerical "
+    "floor of 1e-16."
 )
 
 st.subheader("Last 10 iterations")

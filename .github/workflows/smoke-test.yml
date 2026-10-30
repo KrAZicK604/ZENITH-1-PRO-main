@@ -1,3 +1,4 @@
+
 name: Streamlit smoke test
 
 on:
@@ -12,7 +13,6 @@ permissions:
 
 jobs:
   smoke-test:
-    name: Streamlit smoke test
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
@@ -29,14 +29,14 @@ jobs:
           python-version: "3.14"
           version: "0.13.0"
 
-      - name: Verify Python version
-        run: python --version
-
       - name: Verify lockfile
         run: uv lock --check
 
+      - name: Synchronize locked dependencies
+        run: uv sync --locked --group security
+
       - name: Run Streamlit entry-point smoke test
-        run: uv run --locked python -m unittest discover -s tests -v
+        run: uv run --locked --group security python -m unittest discover -s tests -v
 
       - name: Run repository-wide static security scan
         run: uv run --locked --group security bandit -q -r . -x ./.venv,./.git
