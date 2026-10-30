@@ -1,3 +1,4 @@
+
 name: Streamlit smoke test
 
 on:
@@ -35,7 +36,7 @@ jobs:
         run: uv run --locked python -m unittest discover -s tests -v
 
       - name: Run repository-wide static security scan
-        run: uv run --locked --group security bandit -q -r . -x .venv,.git
+        run: uv run --locked --group security bandit -q -r . -x ./.venv,./.git
 
       - name: Audit locked dependencies
         run: uv run --locked --group security pip-audit --strict --path .venv/lib/python3.14/site-packages --progress-spinner off
