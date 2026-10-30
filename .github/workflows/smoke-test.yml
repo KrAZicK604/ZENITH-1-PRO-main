@@ -1,6 +1,7 @@
 name: Streamlit smoke test
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches:
@@ -13,6 +14,7 @@ jobs:
   smoke-test:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -32,8 +34,8 @@ jobs:
       - name: Run Streamlit entry-point smoke test
         run: uv run --locked python -m unittest discover -s tests -v
 
-      - name: Run static security scan
-        run: uv run --locked --group security bandit -q -r logistic_map.py streamlit_app.py tests
+      - name: Run repository-wide static security scan
+        run: uv run --locked --group security bandit -q -r . -x ./.venv,./.git
 
       - name: Audit locked dependencies
         run: uv run --locked --group security pip-audit --strict --path .venv/lib/python3.14/site-packages --progress-spinner off
