@@ -46,3 +46,18 @@ jobs:
 
       - name: Audit locked dependencies
         run: uv run --locked --group security pip-audit --strict --path .venv/lib/python3.14/site-packages --progress-spinner off
+
+      - name: Generate and verify reproducibility evidence
+        run: |
+          uv run --locked --group security python scripts/repro_evidence.py create
+          uv run --locked --group security python scripts/repro_evidence.py verify
+
+      - name: Upload unsigned verification evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: repro-evidence
+          path: |
+            .evidence/repro-manifest.json
+            .evidence/repro-manifest.json.sha256
+          if-no-files-found: error
+          retention-days: 14
