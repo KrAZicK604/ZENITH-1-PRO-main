@@ -2,6 +2,8 @@
 from __future__ import annotations
 import importlib.util
 import json
+import os
+from unittest.mock import patch
 import subprocess
 import tempfile
 import unittest
@@ -15,6 +17,9 @@ spec.loader.exec_module(evidence)
 
 class EvidenceTest(unittest.TestCase):
     def setUp(self):
+        fixture_env = patch.dict(os.environ, {"GITHUB_SHA": ""})
+        fixture_env.start()
+        self.addCleanup(fixture_env.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -42,6 +47,11 @@ class EvidenceTest(unittest.TestCase):
     def test_prevents_rewrite(self):
         evidence.generate(self.root, self.path)
         with self.assertRaises(evidence.EvidenceError): evidence.generate(self.root, self.path)
+
+    def test_ci_sha_mismatch_is_rejected(self):
+        with patch.dict(os.environ, {"GITHUB_SHA": "0" * 40}):
+            with self.assertRaises(evidence.EvidenceError):
+                evidence.generate(self.root, self.path)
 
     def test_dirty_tree_blocks_creation(self):
         (self.root / "sample.py").write_text("changed")
