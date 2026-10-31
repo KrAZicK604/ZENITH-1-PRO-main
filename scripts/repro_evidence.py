@@ -11,8 +11,9 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import shutil
 import stat
-import subprocess
+import subprocess  # nosec B404 - fixed Git commands execute without a shell
 import sys
 import time
 from datetime import datetime, timezone
@@ -27,8 +28,11 @@ class EvidenceError(ValueError):
 
 
 def git(root: Path, *args: str) -> bytes:
-    process = subprocess.run(
-        ["git", "-C", str(root), *args], capture_output=True, check=False
+    git_executable = shutil.which("git")
+    if not git_executable or not Path(git_executable).is_absolute():
+        raise EvidenceError("absolute git executable not available")
+    process = subprocess.run(  # nosec B603 - absolute Git path, argument array, shell=False
+        [git_executable, "-C", str(root), *args], capture_output=True, check=False
     )
     if process.returncode:
         raise EvidenceError(f"git {' '.join(args)} failed ({process.returncode})")
