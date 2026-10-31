@@ -4,7 +4,6 @@ import importlib.util
 import json
 import os
 from unittest.mock import patch
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,10 +22,10 @@ class EvidenceTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        evidence.git(self.root, "init", "-q")
         (self.root / "sample.py").write_text("print('safe')\n")
-        subprocess.run(["git", "-C", str(self.root), "add", "sample.py"], check=True)
-        subprocess.run(["git", "-C", str(self.root), "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture"], check=True)
+        evidence.git(self.root, "add", "sample.py")
+        evidence.git(self.root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture")
         self.path = self.root / ".evidence" / "repro-manifest.json"
 
     def test_roundtrip(self):
@@ -70,7 +69,7 @@ class EvidenceTest(unittest.TestCase):
         with self.assertRaises(evidence.EvidenceError): evidence.verify(self.root, self.path)
 
     def test_rejects_escape_path(self):
-        for name in ("../bad", "/tmp/other", "x/../sample.py", "x\\y"):
+        for name in ("../bad", str(self.root.parent / "outside-test"), "x/../sample.py", "x\\y"):
             with self.subTest(name=name), self.assertRaises(evidence.EvidenceError):
                 evidence.secure_file(self.root, name)
 
