@@ -22,18 +22,21 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install uv and Python 3.14
+      - name: Install uv and Python 3.14.10
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           enable-cache: true
-          python-version: "3.14"
-          version: "0.13.0"
+          python-version: "3.14.10"
+          version: "0.13.6"
 
       - name: Verify lockfile
         run: uv lock --check
 
       - name: Synchronize locked dependencies
         run: uv sync --locked --group security
+
+      - name: Verify patched Python runtime
+        run: uv run --locked --group security python -c 'import sys; assert sys.version_info[:3] == (3, 14, 10), sys.version'
 
       - name: Run Streamlit entry-point smoke test
         run: uv run --locked --group security python -m unittest discover -s tests -v

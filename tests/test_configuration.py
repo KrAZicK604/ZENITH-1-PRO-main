@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 REPOSITORY_ROOT = Path(__file__).parents[1]
-UV_VERSION = "0.13.0"
+UV_VERSION = "0.13.6"
 BANDIT_VERSION = "1.9.4"
 PIP_AUDIT_VERSION = "2.10.1"
 CI_RUNNER = "ubuntu-24.04"
@@ -78,6 +78,9 @@ class ConfigurationTest(unittest.TestCase):
         self.assertIn(f"runs-on: {CI_RUNNER}", workflow)
         self.assertIn(f"timeout-minutes: {CI_TIMEOUT_MINUTES}", workflow)
         self.assertIn(f'version: "{UV_VERSION}"', workflow)
+        self.assertIn('python-version: "3.14.10"', workflow)
+        self.assertIn("sys.version_info[:3] == (3, 14, 10)", workflow)
+        self.assertEqual((REPOSITORY_ROOT / ".python-version").read_text().strip(), "3.14.10")
         self.assertIn("uv lock --check", workflow)
 
         self.assertIn(BANDIT_COMMAND, workflow)
