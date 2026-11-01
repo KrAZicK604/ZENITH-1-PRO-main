@@ -112,6 +112,16 @@ class EvidenceHardeningTest(unittest.TestCase):
         self.assertEqual(sidecar.read_bytes(), b"ORIGINAL")
         self.assertFalse(self.output.exists())
 
+    def test_repository_fsmonitor_hook_is_not_executed(self):
+        hook = self.tmp / "fsmonitor.sh"
+        marker = self.tmp / "FS_MONITOR_EXECUTED"
+        hook.write_text('#!/bin/sh\nprintf invoked > "' + str(marker) + '"\nprintf "\\0"\n')
+        hook.chmod(0o700)
+        evidence.git(self.root, "config", "core.fsmonitor", str(hook))
+        evidence.generate(self.root, self.output)
+        self.assertFalse(marker.exists(), "Git executed a repository-controlled hook")
+        self.assertEqual(evidence.verify(self.root, self.output)["file_count"], 1)
+
     def test_modified_tracked_file_reports_dirty(self):
         (self.root / "sample.py").write_text("BAD")
         with self.assertRaises(evidence.EvidenceError):
