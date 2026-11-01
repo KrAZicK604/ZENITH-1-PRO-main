@@ -14,7 +14,16 @@ can both be replaced by an attacker controlling the runner.
 GitHub artifact transport adds a SHA-256 digest but not an independent signature.
 
 Generation fails closed for dirty tracked files, GITHUB_SHA mismatch, unsafe paths,
-symlinks, empty or duplicate tracking lists, and existing evidence.
+symlinks, empty or duplicate tracking lists, and existing evidence. Creation also
+checks every tracked file against the committed Git blob, including files Git
+status may hide through assume-unchanged or skip-worktree flags.
+
+Evidence output must be a nonsymlink path inside the checked-out repository
+and outside the .git metadata directory. Existing manifest or checksum files
+are never overwritten. Ordinary write exceptions remove only files created
+by the attempt, preventing a stranded manifest after a sidecar-write error.
+This pair is not a transaction across process crashes, power loss or hostile
+concurrent directory replacement. A trusted, isolated runner remains necessary.
 Verification fails closed for changed content, wrong checkout, missing files, altered
 sidecar, and promotion/authority changes. The verifier also requires a clean
 tracked worktree and compares every file's raw Git object ID with the blob in
