@@ -16,7 +16,14 @@ GitHub artifact transport adds a SHA-256 digest but not an independent signature
 Generation fails closed for dirty tracked files, GITHUB_SHA mismatch, unsafe paths,
 symlinks, empty or duplicate tracking lists, and existing evidence.
 Verification fails closed for changed content, wrong checkout, missing files, altered
-sidecar, and promotion/authority changes. The evidence format remains PAPER_ONLY,
+sidecar, and promotion/authority changes. The verifier also requires a clean
+tracked worktree and compares every file's raw Git object ID with the blob in
+the claimed HEAD commit. This rejects a forged manifest + freshly calculated
+sidecar for modified checkout bytes, including a local index configured with
+`assume-unchanged`. Git attribute filters or platform line-ending conversions
+may require a byte-exact checkout; do not bypass this check to force a PASS.
+The Git commit itself must still be authenticated against a trusted external
+reference: a mutable Git repository is not a provenance authority. The evidence format remains PAPER_ONLY,
 PROMOTION_BLOCKED with production authority NONE.
 
 ## Independent offline check
