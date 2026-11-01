@@ -145,6 +145,17 @@ def verify(root: Path, manifest: Path) -> dict:
     names = [entry.get("path") for entry in data["files"] if isinstance(entry, dict)]
     if len(names) != len(data["files"]) or names != tracked_files(root):
         raise EvidenceError("file listing diverges from Git index")
+    # Compare against the *committed* Git object, not just a mutable manifest.
+    # A regenerated unsigned manifest and sidecar cannot authorize altered
+    # working-tree bytes while the claimed Git HEAD stays unchanged.
+    if git(root, "status", "--porcelain", "--untracked-files=no").strip():
+        raise EvidenceError("tracked working tree differs from Git HEAD")
+    for name in names:
+        target = secure_file(root, name)
+        committed_oid = git(root, "rev-parse", "--verify", f"HEAD:{name}").decode("ascii").strip()
+        actual_oid = git(root, "hash-object", "--no-filters", str(target)).decode("ascii").strip()
+        if committed_oid != actual_oid:
+            raise EvidenceError(f"working file differs from committed Git object: {name}")
     for entry in data["files"]:
         digest = entry.get("sha256")
         if not isinstance(digest, str) or not SHA256.fullmatch(digest):
