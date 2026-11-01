@@ -82,6 +82,38 @@ def tracked_files(root: Path) -> list[str]:
     return names
 
 
+def safe_evidence_output(root: Path, output: Path) -> Path:
+    """Restrict evidence to a nonsymlink path inside the working tree, outside .git."""
+    trusted_root = root.resolve()
+    if not output.is_absolute():
+        raise EvidenceError("evidence output must be an absolute path")
+    try:
+        relative = output.relative_to(trusted_root)
+    except ValueError as error:
+        raise EvidenceError("evidence output escapes repository") from error
+    if (not relative.parts or any(part in (".", "..") for part in relative.parts)
+        or relative.parts[0] == ".git"):
+        raise EvidenceError("unsafe evidence output path")
+    current = trusted_root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise EvidenceError("symlink not permitted in evidence output")
+    if not output.resolve().is_relative_to(trusted_root):
+        raise EvidenceError("evidence output escapes repository")
+    return output
+
+
+def assert_committed_files(root: Path, tracked: list[str]) -> None:
+    """Require raw checkout bytes to match HEAD, even for assume-unchanged files."""
+    for name in tracked:
+        target = secure_file(root, name)
+        committed_oid = git(root, "rev-parse", "--verify", f"HEAD:{name}").decode("ascii").strip()
+        actual_oid = git(root, "hash-object", "--no-filters", str(target)).decode("ascii").strip()
+        if committed_oid != actual_oid:
+            raise EvidenceError(f"working file differs from committed Git object: {name}")
+
+
 def generate(root: Path, output: Path) -> dict:
     started = time.monotonic_ns()
     sha = commit_sha(root)
@@ -91,6 +123,8 @@ def generate(root: Path, output: Path) -> dict:
     if git(root, "status", "--porcelain", "--untracked-files=no").strip():
         raise EvidenceError("tracked working tree is dirty")
     tracked = tracked_files(root)
+    assert_committed_files(root, tracked)
+    output = safe_evidence_output(root, output)
     entries = [
         {"path": name, "sha256": file_digest(secure_file(root, name))}
         for name in tracked
@@ -112,14 +146,23 @@ def generate(root: Path, output: Path) -> dict:
         "file_count": len(entries),
         "files": entries,
     }
-    if output.exists() or output.with_name(output.name + ".sha256").exists():
+    checksum_path = output.with_name(output.name + ".sha256")
+    if output.exists() or checksum_path.exists():
         raise EvidenceError("refuse to overwrite existing evidence")
     output.parent.mkdir(parents=True, exist_ok=True)
+    safe_evidence_output(root, output)  # Recheck after directory creation.
     payload = (json.dumps(evidence, sort_keys=True, indent=2, ensure_ascii=True) + "\n").encode("utf-8")
-    output.write_bytes(payload)
-    output.with_name(output.name + ".sha256").write_text(
-        hashlib.sha256(payload).hexdigest() + "  " + output.name + "\n", encoding="ascii"
-    )
+    checksum = (hashlib.sha256(payload).hexdigest() + "  " + output.name + "\n").encode("ascii")
+    created: list[Path] = []
+    try:
+        for path, content in ((output, payload), (checksum_path, checksum)):
+            with path.open("xb") as destination:  # Exclusive: never replace existing evidence.
+                created.append(path)
+                destination.write(content)
+    except Exception:
+        for path in reversed(created):
+            path.unlink(missing_ok=True)
+        raise
     return evidence
 
 
@@ -150,12 +193,7 @@ def verify(root: Path, manifest: Path) -> dict:
     # working-tree bytes while the claimed Git HEAD stays unchanged.
     if git(root, "status", "--porcelain", "--untracked-files=no").strip():
         raise EvidenceError("tracked working tree differs from Git HEAD")
-    for name in names:
-        target = secure_file(root, name)
-        committed_oid = git(root, "rev-parse", "--verify", f"HEAD:{name}").decode("ascii").strip()
-        actual_oid = git(root, "hash-object", "--no-filters", str(target)).decode("ascii").strip()
-        if committed_oid != actual_oid:
-            raise EvidenceError(f"working file differs from committed Git object: {name}")
+    assert_committed_files(root, names)
     for entry in data["files"]:
         digest = entry.get("sha256")
         if not isinstance(digest, str) or not SHA256.fullmatch(digest):
