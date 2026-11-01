@@ -16,7 +16,7 @@
       ]
     }
   },
-  "updateContentCommand": "if [ -f packages.txt ]; then sudo apt update && sudo apt upgrade -y && sudo xargs apt install -y < packages.txt; fi; if [ \"$(uv --version 2>/dev/null | cut -d' ' -f2)\" != \"0.13.0\" ]; then pipx install --force uv==0.13.0; fi; export PATH=\"$HOME/.local/bin:$PATH\"; UV_PROJECT_ENVIRONMENT=\"$HOME/.venvs/zenith-1-pro\" uv sync --locked",
+  "updateContentCommand": "if [ -f packages.txt ]; then sudo apt update && sudo apt upgrade -y && sudo xargs apt install -y < packages.txt; fi; if [ \"$(uv --version 2>/dev/null | cut -d' ' -f2)\" != \"0.13.6\" ]; then pipx install --force uv==0.13.6; fi; export PATH=\"$HOME/.local/bin:$PATH\"; UV_PROJECT_ENVIRONMENT=\"$HOME/.venvs/zenith-1-pro\" uv sync --locked",
   "postAttachCommand": {
     "server": "export PATH=\"$HOME/.local/bin:$PATH\"; UV_PROJECT_ENVIRONMENT=\"$HOME/.venvs/zenith-1-pro\" uv run --locked streamlit run streamlit_app.py"
   },
