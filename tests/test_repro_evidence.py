@@ -2,6 +2,7 @@
 from __future__ import annotations
 import importlib.util
 import json
+import hashlib
 import os
 from unittest.mock import patch
 import tempfile
@@ -42,6 +43,30 @@ class EvidenceTest(unittest.TestCase):
         evidence.generate(self.root, self.path)
         self.path.write_text(self.path.read_text() + " ")
         with self.assertRaises(evidence.EvidenceError): evidence.verify(self.root, self.path)
+
+    def test_rehashed_manifest_rejects_changed_source(self):
+        evidence.generate(self.root, self.path)
+        changed = b"print('altered')\n"
+        (self.root / "sample.py").write_bytes(changed)
+        record = json.loads(self.path.read_text())
+        record["files"][0]["sha256"] = hashlib.sha256(changed).hexdigest()
+        raw = (json.dumps(record, sort_keys=True, indent=2, ensure_ascii=True) + "\n").encode()
+        self.path.write_bytes(raw)
+        self.path.with_name(self.path.name + ".sha256").write_text(
+            hashlib.sha256(raw).hexdigest() + "  " + self.path.name + "\n"
+        )
+        with self.assertRaises(evidence.EvidenceError):
+            evidence.verify(self.root, self.path)
+
+    def test_assume_unchanged_cannot_hide_modified_git_blob(self):
+        evidence.generate(self.root, self.path)
+        evidence.git(self.root, "update-index", "--assume-unchanged", "sample.py")
+        (self.root / "sample.py").write_text("print('altered')\n")
+        self.assertFalse(
+            evidence.git(self.root, "status", "--porcelain", "--untracked-files=no").strip()
+        )
+        with self.assertRaisesRegex(evidence.EvidenceError, "committed Git object"):
+            evidence.verify(self.root, self.path)
 
     def test_prevents_rewrite(self):
         evidence.generate(self.root, self.path)
