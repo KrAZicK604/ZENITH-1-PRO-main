@@ -16,7 +16,11 @@ GitHub artifact transport adds a SHA-256 digest but not an independent signature
 Generation fails closed for dirty tracked files, GITHUB_SHA mismatch, unsafe paths,
 symlinks, empty or duplicate tracking lists, and existing evidence. Creation also
 checks every tracked file against the committed Git blob, including files Git
-status may hide through assume-unchanged or skip-worktree flags.
+status may hide through assume-unchanged or skip-worktree flags. Git
+commands disable the repository-configurable core.fsmonitor hook, preventing
+this Git command path from executing an untrusted filesystem-monitor program.
+Other untrusted repository configuration and hostile runners remain separate
+trust concerns; this is not a full Git sandbox.
 
 Evidence output must be a nonsymlink path inside the checked-out repository
 and outside the .git metadata directory. Existing manifest or checksum files
