@@ -94,6 +94,12 @@ def secure_evidence_paths(root: Path, output: Path) -> tuple[Path, Path]:
     if not relative.parts or ".." in relative.parts:
         raise EvidenceError("unsafe evidence output path")
     sidecar = output.with_name(output.name + ".sha256")
+    git_dir_bytes = git(root, "rev-parse", "--absolute-git-dir").rstrip(b"\n")
+    if not git_dir_bytes:
+        raise EvidenceError("Git administrative directory unavailable")
+    git_dir = Path(os.fsdecode(git_dir_bytes)).resolve()
+    if output == git_dir or git_dir in output.parents:
+        raise EvidenceError("evidence output inside Git administrative directory")
     if not output.resolve().is_relative_to(root) or not sidecar.resolve().is_relative_to(root):
         raise EvidenceError("evidence output escapes repository")
     for candidate in (output, sidecar, *output.parents):
@@ -113,10 +119,14 @@ def generate(root: Path, output: Path) -> dict:
     if git(root, "status", "--porcelain", "--untracked-files=no").strip():
         raise EvidenceError("tracked working tree is dirty")
     tracked = tracked_files(root)
-    entries = [
-        {"path": name, "sha256": file_digest(secure_file(root, name))}
-        for name in tracked
-    ]
+    entries = []
+    for name in tracked:
+        target = secure_file(root, name)
+        committed_oid = git(root, "rev-parse", "--verify", f"HEAD:{name}").decode("ascii").strip()
+        actual_oid = git(root, "hash-object", "--no-filters", str(target)).decode("ascii").strip()
+        if actual_oid != committed_oid:
+            raise EvidenceError(f"working file differs from committed Git object: {name}")
+        entries.append({"path": name, "sha256": file_digest(target)})
     evidence = {
         "schema_version": SCHEMA_VERSION,
         "status": "PAPER_ONLY",

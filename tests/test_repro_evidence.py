@@ -139,6 +139,22 @@ class EvidenceTest(unittest.TestCase):
         evidence.generate(self.root, self.path)
         self.assertEqual(evidence.verify(self.root, self.path)["file_count"], 1)
 
+    def test_generation_rejects_dirty_assume_unchanged_file(self):
+        evidence.git(self.root, "update-index", "--assume-unchanged", "sample.py")
+        (self.root / "sample.py").write_text("print('changed but hidden')\n")
+        self.assertFalse(evidence.git(self.root, "status", "--porcelain", "--untracked-files=no").strip())
+        with self.assertRaisesRegex(evidence.EvidenceError, "committed Git object"):
+            evidence.generate(self.root, self.path)
+        self.assertFalse(self.path.exists())
+
+    def test_rejects_evidence_output_inside_git_admin(self):
+        git_dir = Path(os.fsdecode(evidence.git(self.root, "rev-parse", "--absolute-git-dir").rstrip(b"\n")))
+        out = git_dir / "hooks" / "post-commit"
+        self.assertFalse(out.exists())
+        with self.assertRaisesRegex(evidence.EvidenceError, "Git administrative"):
+            evidence.generate(self.root, out)
+        self.assertFalse(out.exists())
+
     def test_manifest_abstain_fields_cannot_change(self):
         evidence.generate(self.root, self.path)
         payload = json.loads(self.path.read_text())
