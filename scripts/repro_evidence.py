@@ -82,6 +82,28 @@ def tracked_files(root: Path) -> list[str]:
     return names
 
 
+def secure_evidence_paths(root: Path, output: Path) -> tuple[Path, Path]:
+    """Keep evidence outputs within the repository and reject symlink paths."""
+    root = root.resolve()
+    if not output.is_absolute():
+        output = root / output
+    try:
+        relative = output.relative_to(root)
+    except ValueError as error:
+        raise EvidenceError("evidence output escapes repository") from error
+    if not relative.parts or ".." in relative.parts:
+        raise EvidenceError("unsafe evidence output path")
+    sidecar = output.with_name(output.name + ".sha256")
+    if not output.resolve().is_relative_to(root) or not sidecar.resolve().is_relative_to(root):
+        raise EvidenceError("evidence output escapes repository")
+    for candidate in (output, sidecar, *output.parents):
+        if candidate == root:
+            break
+        if candidate.is_symlink():
+            raise EvidenceError("symlink not permitted in evidence output")
+    return output, sidecar
+
+
 def generate(root: Path, output: Path) -> dict:
     started = time.monotonic_ns()
     sha = commit_sha(root)
@@ -112,14 +134,29 @@ def generate(root: Path, output: Path) -> dict:
         "file_count": len(entries),
         "files": entries,
     }
-    if output.exists() or output.with_name(output.name + ".sha256").exists():
+    output, sidecar = secure_evidence_paths(root, output)
+    if output.exists() or sidecar.exists():
         raise EvidenceError("refuse to overwrite existing evidence")
     output.parent.mkdir(parents=True, exist_ok=True)
+    secure_evidence_paths(root, output)
     payload = (json.dumps(evidence, sort_keys=True, indent=2, ensure_ascii=True) + "\n").encode("utf-8")
-    output.write_bytes(payload)
-    output.with_name(output.name + ".sha256").write_text(
-        hashlib.sha256(payload).hexdigest() + "  " + output.name + "\n", encoding="ascii"
-    )
+    made_output = False
+    made_sidecar = False
+    try:
+        # Exclusive creation prevents replacing an existing or dangling symlink.
+        with output.open("xb") as source:
+            made_output = True
+            source.write(payload)
+        with sidecar.open("x", encoding="ascii") as checksum:
+            made_sidecar = True
+            checksum.write(hashlib.sha256(payload).hexdigest() + "  " + output.name + "\n")
+    except OSError:
+        # Clean only files created by this attempt; preserve pre-existing files.
+        if made_sidecar:
+            sidecar.unlink(missing_ok=True)
+        if made_output:
+            output.unlink(missing_ok=True)
+        raise
     return evidence
 
 

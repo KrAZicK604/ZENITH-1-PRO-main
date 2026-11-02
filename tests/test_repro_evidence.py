@@ -98,6 +98,47 @@ class EvidenceTest(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(evidence.EvidenceError):
                 evidence.secure_file(self.root, name)
 
+    def test_output_directory_symlink_is_rejected(self):
+        with tempfile.TemporaryDirectory() as external:
+            outside = Path(external)
+            (self.root / ".evidence").symlink_to(outside, target_is_directory=True)
+            with self.assertRaisesRegex(evidence.EvidenceError, "symlink|escapes"):
+                evidence.generate(self.root, self.path)
+            self.assertFalse((outside / "repro-manifest.json").exists())
+
+    def test_dangling_output_symlink_is_rejected(self):
+        with tempfile.TemporaryDirectory() as external:
+            self.path.parent.mkdir()
+            outside = Path(external) / "outside-manifest.json"
+            self.path.symlink_to(outside)
+            with self.assertRaisesRegex(evidence.EvidenceError, "symlink|escapes"):
+                evidence.generate(self.root, self.path)
+            self.assertFalse(outside.exists())
+
+    def test_output_outside_repository_is_rejected(self):
+        with tempfile.TemporaryDirectory() as external:
+            outside = Path(external) / "outside-manifest.json"
+            with self.assertRaisesRegex(evidence.EvidenceError, "escapes"):
+                evidence.generate(self.root, outside)
+            self.assertFalse(outside.exists())
+
+    def test_failed_checksum_write_cleans_partial_manifest(self):
+        original = Path.open
+
+        def fail_sidecar(path, mode="r", *args, **kwargs):
+            if str(path).endswith(".sha256") and mode == "x":
+                raise OSError("injected checksum failure")
+            return original(path, mode, *args, **kwargs)
+
+        with patch.object(Path, "open", fail_sidecar):
+            with self.assertRaisesRegex(OSError, "injected checksum failure"):
+                evidence.generate(self.root, self.path)
+        self.assertFalse(self.path.exists())
+        self.assertFalse(self.path.with_name(self.path.name + ".sha256").exists())
+        # The failure must not permanently block a normal retry.
+        evidence.generate(self.root, self.path)
+        self.assertEqual(evidence.verify(self.root, self.path)["file_count"], 1)
+
     def test_manifest_abstain_fields_cannot_change(self):
         evidence.generate(self.root, self.path)
         payload = json.loads(self.path.read_text())
