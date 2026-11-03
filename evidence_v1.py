@@ -14,6 +14,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from logistic_map import logistic_orbit
+from rational_oracle import verify_recurrence
 
 SCHEMA = "zenith-evidence-v1"
 MAX_BYTES = 100_000
@@ -113,7 +114,12 @@ def verify_evidence(record):
         actual = logistic_orbit(params["rate"], params["initial_state"], n)
         if not all(type(s) is str and s == x.hex() for s, x in zip(orbit, actual)):
             return "FAIL", "replay mismatch"
-        return "PASS", "local deterministic replay matched"
+        oracle_status, reason = verify_recurrence(
+            params["rate"], params["initial_state"], orbit
+        )
+        if oracle_status != "PASS":
+            return oracle_status, reason
+        return "PASS", "deterministic replay and exact-rational residual oracle matched"
     except (ValueError, TypeError, KeyError, OverflowError, RecursionError):
         return "FAIL", "malformed evidence"
 
