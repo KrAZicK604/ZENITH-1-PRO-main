@@ -1,0 +1,68 @@
+# Reproducibility evidence gate (v1)
+
+This workflow produces an unsigned source-integrity inventory after the unit, static-security,
+and dependency-audit gates succeed. It is not a signature, independent security audit,
+scientific proof, or production authorization.
+
+## Fields and limits
+
+The manifest records the checked-out Git commit, SHA-256 for every tracked file
+(including source, tests, dependency lockfile and workflow), CI event/run identifiers,
+Python version, a UTC host-clock timestamp, and monotonic elapsed duration.
+The timestamp is HOST_CLOCK_UNATTESTED. A manifest and its sidecar checksum
+can both be replaced by an attacker controlling the runner.
+GitHub artifact transport adds a SHA-256 digest but not an independent signature.
+
+Generation fails closed for dirty tracked files, GITHUB_SHA mismatch, unsafe paths,
+symlinks, empty or duplicate tracking lists, and existing evidence. Creation also
+checks every tracked file against the committed Git blob, including files Git
+status may hide through assume-unchanged or skip-worktree flags. Git
+commands disable the repository-configurable core.fsmonitor hook, preventing
+this Git command path from executing an untrusted filesystem-monitor program.
+Other untrusted repository configuration and hostile runners remain separate
+trust concerns; this is not a full Git sandbox.
+
+Evidence *creation* is restricted to a nonsymlink path under the checked-out
+repository's `.evidence/` directory, not merely somewhere inside the checkout.
+This prevents writes into application, workflow, or Git administrative paths.
+Both the manifest and its checksum path are checked for existing symlinks.
+Existing manifest or checksum files
+are never overwritten. Ordinary write exceptions remove only files created
+by the attempt, preventing a stranded manifest after a sidecar-write error.
+This pair is not a transaction across process crashes, power loss or hostile
+concurrent directory replacement. A trusted, isolated runner remains necessary.
+Verification fails closed for changed content, wrong checkout, missing files, altered
+sidecar, and promotion/authority changes. The verifier also requires a clean
+tracked worktree and compares every file's raw Git object ID with the blob in
+the claimed HEAD commit. This rejects a forged manifest + freshly calculated
+sidecar for modified checkout bytes, including a local index configured with
+`assume-unchanged`. Git attribute filters or platform line-ending conversions
+may require a byte-exact checkout; do not bypass this check to force a PASS.
+The Git commit itself must still be authenticated against a trusted external
+reference: a mutable Git repository is not a provenance authority. The evidence format remains PAPER_ONLY,
+PROMOTION_BLOCKED with production authority NONE.
+
+## Independent offline check
+
+Check out the manifest's exact git_head (on PRs this may be a generated merge
+commit rather than the branch tip). Download both files from the GitHub
+repro-evidence artifact into .evidence/ and run:
+
+    python scripts/repro_evidence.py verify
+
+A passing check reports EVIDENCE_VERIFIED, the exact commit and file count.
+
+For a local trial in a clean Git working tree:
+
+    python scripts/repro_evidence.py create
+    python scripts/repro_evidence.py verify
+
+The generator intentionally refuses to overwrite an existing manifest.
+Archive evidence separately before repeating the experiment.
+
+## What this does NOT establish
+
+This does not authenticate the origin of results, guarantee a trusted clock,
+prove that tests are scientifically adequate, or establish operational
+readiness. Independent reviewer identity, signed attestations, calibrated
+false-acceptance rates, and external scientific validation are separate gates.

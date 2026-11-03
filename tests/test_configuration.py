@@ -90,6 +90,13 @@ class ConfigurationTest(unittest.TestCase):
             workflow,
         )
 
+        self.assertIn("python scripts/repro_evidence.py create", workflow)
+        self.assertIn("python scripts/repro_evidence.py verify", workflow)
+        self.assertIn(
+            "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+            workflow,
+        )
+        self.assertIn("if-no-files-found: error", workflow)
         self.assertNotIn("uvx ", workflow)
 
         external_actions = re.findall(
