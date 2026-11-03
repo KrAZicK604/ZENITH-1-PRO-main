@@ -136,6 +136,18 @@ class AttestationWorkflowContractTest(unittest.TestCase):
                 self.assertIn(clause, condition)
         self.assertNotIn("||", condition)
 
+    def test_privileged_runtime_is_installed_before_lookup(self):
+        setup = self.signer.index("enable-cache: false")
+        install = self.signer.index("run: uv python install 3.14.10")
+        lookup = self.signer.index('PYTHON="$(uv python find 3.14.10)"')
+        verify = self.signer.index('"$PYTHON" scripts/attestation_gate.py')
+        sign = self.signer.index("uses: actions/attest@")
+        self.assertLess(setup, install)
+        self.assertLess(install, lookup)
+        self.assertLess(lookup, verify)
+        self.assertLess(verify, sign)
+        self.assertNotIn("uv sync ", self.signer)
+
     def test_source_provenance_verified_before_signing(self):
         self.assertIn("digest-mismatch: error",self.signer)
         self.assertIn("name: repro-evidence",self.signer)

@@ -86,8 +86,12 @@ jobs:
       - name: Install pinned verification runtime without dependency cache
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
+          enable-cache: false
           python-version: "3.14.10"
           version: "0.13.6"
+
+      - name: Install exact managed Python interpreter
+        run: uv python install 3.14.10
 
       - name: Download evidence produced by this workflow run
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
