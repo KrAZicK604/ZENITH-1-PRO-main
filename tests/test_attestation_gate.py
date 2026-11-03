@@ -119,6 +119,23 @@ class AttestationWorkflowContractTest(unittest.TestCase):
             self.assertIn(token,self.signer)
         self.assertNotIn("pull_request_target",self.workflow)
 
+    def test_privileged_permissions_require_protected_ref_before_job_starts(self):
+        # GitHub evaluates a job's if before allocating its OIDC-enabled runner.
+        pre_permissions = self.signer.split("    permissions:\n", 1)[0]
+        conditions = [line.strip() for line in pre_permissions.splitlines()
+                      if line.strip().startswith("if: ")]
+        self.assertEqual(len(conditions), 1)
+        condition = conditions[0]
+        for clause in (
+            "github.event_name == 'push'",
+            "github.ref == 'refs/heads/main'",
+            "github.ref_protected == true",
+            "github.repository == 'KrAZicK604/ZENITH-1-PRO-main'",
+        ):
+            with self.subTest(clause=clause):
+                self.assertIn(clause, condition)
+        self.assertNotIn("||", condition)
+
     def test_source_provenance_verified_before_signing(self):
         self.assertIn("digest-mismatch: error",self.signer)
         self.assertIn("name: repro-evidence",self.signer)

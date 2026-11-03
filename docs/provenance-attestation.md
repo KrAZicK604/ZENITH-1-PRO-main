@@ -12,7 +12,9 @@ checksum **only after a successful protected `main` push smoke-test**.
   no OIDC (`id-token`) or attestation write permission. Pull requests and
   `workflow_dispatch` can generate and test **unsigned** evidence only.
 - The `attest-main` job is conditional on a push to `refs/heads/main` in
-  `KrAZicK604/ZENITH-1-PRO-main`, and depends on a successful `smoke-test`.
+  `KrAZicK604/ZENITH-1-PRO-main`, additionally requires GitHub's
+  `github.ref_protected == true` *before runner assignment*, and depends on a
+  successful `smoke-test`.
 - Only `attest-main` has job-scoped `id-token: write`, `attestations: write`,
   and `artifact-metadata: write`. Its policy script additionally requires
   `GITHUB_REF_PROTECTED=true` to fail if branch protection disappears.

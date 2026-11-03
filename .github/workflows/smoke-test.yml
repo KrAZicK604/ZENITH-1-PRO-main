@@ -67,7 +67,7 @@ jobs:
   attest-main:
     name: trusted-main-attestation
     # PRs and manual dispatches never receive OIDC signing privileges.
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'KrAZicK604/ZENITH-1-PRO-main' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected == true && github.repository == 'KrAZicK604/ZENITH-1-PRO-main' }}
     needs: smoke-test
     runs-on: ubuntu-24.04
     timeout-minutes: 10
