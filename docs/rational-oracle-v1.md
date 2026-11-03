@@ -42,13 +42,15 @@ Run from the stacked candidate branch:
     uv run --locked --group security python -m unittest discover -s tests -v
     uv run --locked --group security bandit -q -r . -x ./.venv,./.git
 
-The deterministic test suite uses random.Random(20261102) and 40 runs of
-1,000 steps each, plus long-underflow cases, nonfinite and noncanonical
+The deterministic test suite derives 40 bounded input pairs from SHA-256 of
+ASCII labels `logistic-fraction-v1:20261102:<case>` and runs 1,000 steps
+per input, without pseudo-random-generator exemptions. It also includes
+long-underflow cases, nonfinite and noncanonical
 inputs, modified-state attacks, and a patched local simulator that emits
 self-consistent but mathematically incorrect replay data.
 
-Independent local preflight (prior to GitHub CI): 40/40 seeded trajectories,
-40,000 step checks passed; a deliberately modified step was rejected.
+Independent local preflight: 40/40 SHA-256-derived trajectories and 40,000
+step checks passed. An earlier deliberately modified step was rejected.
 This preflight was run outside the repository integration and is not CI.
 
 ## What a PASS does and does not show
