@@ -1,4 +1,3 @@
-
 name: Streamlit smoke test
 
 on:
@@ -87,7 +86,57 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           python-version: "3.14.10"
+          version: "0.13.6
+
+      - name: Download evidence produced by this workflow run
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: repro-evidence
+          path: .evidence
+          digest-mismatch: error
+
+      - name: Verify downloaded evidence with stdlib-only pinned Python
+        run: |
+          PYTHON="$(uv python find 3.14.10)"
+          test -x "$PYTHON"
+          "$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info[:3] == (3, 14, 10) else 1)'
+          "$PYTHON" scripts/attestation_gate.py
+
+      - name: Sign verified manifest and checksum provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: |
+            .evidence/repro-manifest.json
+            .evidence/repro-manifest.json.sha256
+            
+  attest-main:
+    name: trusted-main-attestation
+    # PRs and manual dispatches never receive OIDC signing privileges.
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected == true && github.repository == 'KrAZicK604/ZENITH-1-PRO-main' }}
+    needs: smoke-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+
+    steps:
+      - name: Check out the exact protected source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned verification runtime without dependency cache
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
+        with:
+          enable-cache: false
+          python-version: "3.14.10"
           version: "0.13.6"
+
+      - name: Install exact managed Python interpreter
+        run: uv python install 3.14.10
 
       - name: Download evidence produced by this workflow run
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
