@@ -123,11 +123,23 @@ class AttestationWorkflowContractTest(unittest.TestCase):
         self.assertIn("digest-mismatch: error",self.signer)
         self.assertIn("name: repro-evidence",self.signer)
         self.assertIn("path: .evidence",self.signer)
-        verify=self.signer.index("python scripts/attestation_gate.py")
+        verify=self.signer.index('"$PYTHON" scripts/attestation_gate.py')
         sign=self.signer.index("uses: actions/attest@")
         self.assertLess(verify,sign)
         self.assertIn(".evidence/repro-manifest.json",self.signer)
         self.assertIn(".evidence/repro-manifest.json.sha256",self.signer)
+
+    def test_privileged_verifier_is_stdlib_only(self):
+        self.assertIn('PYTHON="$(uv python find 3.14.10)"', self.signer)
+        self.assertIn('test -x "$PYTHON"', self.signer)
+        self.assertIn('"$PYTHON" scripts/attestation_gate.py', self.signer)
+        self.assertIn('sys.version_info[:3] == (3, 14, 10)', self.signer)
+        for unsafe in (
+            "uv sync ", "uv run ", "uv lock --check", "enable-cache: true",
+            "pip install ", "pipx ", "curl ", "wget ",
+        ):
+            with self.subTest(unsafe=unsafe):
+                self.assertNotIn(unsafe, self.signer)
 
     def test_all_new_actions_pinned_exactly(self):
         self.assertIn("actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",self.signer)

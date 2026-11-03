@@ -83,10 +83,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install pinned verification runtime
+      - name: Install pinned verification runtime without dependency cache
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
-          enable-cache: true
           python-version: "3.14.10"
           version: "0.13.6"
 
@@ -97,11 +96,12 @@ jobs:
           path: .evidence
           digest-mismatch: error
 
-      - name: Verify downloaded evidence and trusted-main context
+      - name: Verify downloaded evidence with stdlib-only pinned Python
         run: |
-          uv lock --check
-          uv sync --locked --group security
-          uv run --locked --group security python scripts/attestation_gate.py
+          PYTHON="$(uv python find 3.14.10)"
+          test -x "$PYTHON"
+          "$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info[:3] == (3, 14, 10) else 1)'
+          "$PYTHON" scripts/attestation_gate.py
 
       - name: Sign verified manifest and checksum provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
