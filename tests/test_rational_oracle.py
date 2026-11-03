@@ -1,6 +1,6 @@
 """Adversarial and seeded tests for the independent rational recurrence oracle."""
 import math
-import random
+import hashlib
 import unittest
 from unittest.mock import patch
 
@@ -15,10 +15,14 @@ class RationalOracleTest(unittest.TestCase):
         return [state.hex() for state in logistic_orbit(rate, initial, steps)]
 
     def test_forty_seeded_full_budget_orbits(self):
-        rng = random.Random(20261102)
         for case in range(40):
-            rate = rng.uniform(0.05, 4.0)
-            initial = rng.uniform(0.000001, 0.999999)
+            seed = hashlib.sha256(
+                f"logistic-fraction-v1:20261102:{case}".encode("ascii")
+            ).digest()
+            rate = 0.05 + 3.95 * (int.from_bytes(seed[:8], "big") / 2**64)
+            initial = 0.000001 + 0.999998 * (
+                int.from_bytes(seed[8:16], "big") / 2**64
+            )
             with self.subTest(case=case):
                 result = verify_recurrence(rate, initial, self.encoded(rate, initial, 1000))
                 self.assertEqual(result[0], "PASS", result[1])
