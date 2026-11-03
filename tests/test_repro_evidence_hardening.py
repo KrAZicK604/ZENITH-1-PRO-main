@@ -71,6 +71,38 @@ class EvidenceHardeningTest(unittest.TestCase):
             evidence.generate(self.root, output)
         self.assertFalse((self.tmp / "outside.json").exists())
 
+    def test_rejects_unapproved_output_subtree(self):
+        # Even in-repository paths must not become arbitrary write targets.
+        output = self.root / ".github" / "workflows" / "new.yml"
+        with self.assertRaisesRegex(evidence.EvidenceError, "unsafe evidence"):
+            evidence.generate(self.root, output)
+        self.assertFalse(output.exists())
+
+    def test_dangling_manifest_symlink_does_not_escape(self):
+        external = self.tmp / "uncreated-external.json"
+        self.output.parent.mkdir(parents=True, exist_ok=True)
+        self.output.symlink_to(external)
+        with self.assertRaisesRegex(evidence.EvidenceError, "symlink"):
+            evidence.generate(self.root, self.output)
+        self.assertFalse(external.exists())
+        self.assertTrue(self.output.is_symlink())
+
+    def test_dangling_sidecar_symlink_does_not_escape(self):
+        external = self.tmp / "uncreated-external.sha256"
+        self.output.parent.mkdir(parents=True, exist_ok=True)
+        sidecar = self.output.with_name(self.output.name + ".sha256")
+        sidecar.symlink_to(external)
+        with self.assertRaisesRegex(evidence.EvidenceError, "symlink"):
+            evidence.generate(self.root, self.output)
+        self.assertFalse(self.output.exists())
+        self.assertFalse(external.exists())
+        self.assertTrue(sidecar.is_symlink())
+
+    def test_custom_manifest_inside_evidence_still_works(self):
+        nested = self.root / ".evidence" / "custom" / "manifest.json"
+        self.assertEqual(evidence.generate(self.root, nested)["file_count"], 1)
+        self.assertEqual(evidence.verify(self.root, nested)["file_count"], 1)
+
     def test_assume_unchanged_modified_file_blocks_creation(self):
         evidence.git(self.root, "update-index", "--assume-unchanged", "sample.py")
         (self.root / "sample.py").write_text("TAMPERED\n")

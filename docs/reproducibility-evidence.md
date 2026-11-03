@@ -22,8 +22,11 @@ this Git command path from executing an untrusted filesystem-monitor program.
 Other untrusted repository configuration and hostile runners remain separate
 trust concerns; this is not a full Git sandbox.
 
-Evidence output must be a nonsymlink path inside the checked-out repository
-and outside the .git metadata directory. Existing manifest or checksum files
+Evidence *creation* is restricted to a nonsymlink path under the checked-out
+repository's `.evidence/` directory, not merely somewhere inside the checkout.
+This prevents writes into application, workflow, or Git administrative paths.
+Both the manifest and its checksum path are checked for existing symlinks.
+Existing manifest or checksum files
 are never overwritten. Ordinary write exceptions remove only files created
 by the attempt, preventing a stranded manifest after a sidecar-write error.
 This pair is not a transaction across process crashes, power loss or hostile

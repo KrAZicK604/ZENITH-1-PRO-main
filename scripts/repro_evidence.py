@@ -92,9 +92,9 @@ def safe_evidence_output(root: Path, output: Path) -> Path:
         relative = output.relative_to(trusted_root)
     except ValueError as error:
         raise EvidenceError("evidence output escapes repository") from error
-    if (not relative.parts or any(part in (".", "..") for part in relative.parts)
-        or relative.parts[0] == ".git"):
-        raise EvidenceError("unsafe evidence output path")
+    if (not relative.parts or len(relative.parts) < 2 or relative.parts[0] != ".evidence"
+        or any(part in (".", "..") for part in relative.parts)):
+        raise EvidenceError("unsafe evidence output path: creation requires .evidence/")
     current = trusted_root
     for part in relative.parts:
         current = current / part
@@ -102,6 +102,11 @@ def safe_evidence_output(root: Path, output: Path) -> Path:
             raise EvidenceError("symlink not permitted in evidence output")
     if not output.resolve().is_relative_to(trusted_root):
         raise EvidenceError("evidence output escapes repository")
+    # Reject a dangling sidecar link before creating the manifest. Exclusive
+    # creation below still protects against late pre-existing file changes.
+    sidecar = output.with_name(output.name + ".sha256")
+    if sidecar.is_symlink():
+        raise EvidenceError("symlink not permitted in evidence output checksum")
     return output
 
 
