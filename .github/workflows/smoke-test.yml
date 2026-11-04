@@ -49,6 +49,21 @@ jobs:
       - name: Audit locked dependencies
         run: uv run --locked --group security pip-audit --strict --path .venv/lib/python3.14/site-packages --progress-spinner off
 
+      - name: Validate isolated attestation Python bootstrap without OIDC
+        env:
+          UV_PYTHON_INSTALL_DIR: ${{ runner.temp }}/attestation-bootstrap-preflight
+        run: |
+          set -euo pipefail
+          test ! -e "$UV_PYTHON_INSTALL_DIR"
+          uv python install 3.14.10
+          PYTHON="$(uv python find --managed-python 3.14.10)"
+          test -x "$PYTHON"
+          case "$PYTHON" in
+            "$UV_PYTHON_INSTALL_DIR"/*) ;;
+            *) echo "Python bootstrap escaped the isolated install directory" >&2; exit 1 ;;
+          esac
+          "$PYTHON" -I -c 'import sys; sys.exit(0 if sys.version_info[:3] == (3, 14, 10) else 1)'
+
       - name: Generate and verify reproducibility evidence
         run: |
           uv run --locked --group security python scripts/repro_evidence.py create
@@ -102,7 +117,7 @@ jobs:
 
       - name: Verify downloaded evidence with stdlib-only pinned Python
         run: |
-          PYTHON="$(uv python find 3.14.10)"
+          PYTHON="$(uv python find --managed-python 3.14.10)"
           test -x "$PYTHON"
           "$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info[:3] == (3, 14, 10) else 1)'
           "$PYTHON" scripts/attestation_gate.py
