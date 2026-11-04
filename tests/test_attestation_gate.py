@@ -136,10 +136,26 @@ class AttestationWorkflowContractTest(unittest.TestCase):
                 self.assertIn(clause, condition)
         self.assertNotIn("||", condition)
 
+    def test_unprivileged_bootstrap_preflight_isolated_from_signing(self):
+        marker = "      - name: Validate isolated attestation Python bootstrap without OIDC"
+        self.assertEqual(self.smoke.count(marker), 1)
+        preflight = self.smoke.split(marker, 1)[1].split("      - name:", 1)[0]
+        self.assertIn("UV_PYTHON_INSTALL_DIR: ${{ runner.temp }}/attestation-bootstrap-preflight", preflight)
+        self.assertIn('test ! -e "$UV_PYTHON_INSTALL_DIR"', preflight)
+        self.assertIn("uv python install 3.14.10", preflight)
+        self.assertIn('PYTHON="$(uv python find --managed-python 3.14.10)"', preflight)
+        self.assertIn('test -x "$PYTHON"', preflight)
+        self.assertIn('"$UV_PYTHON_INSTALL_DIR"/*', preflight)
+        self.assertIn('"$PYTHON" -I -c', preflight)
+        self.assertNotIn("id-token: write", self.smoke)
+        self.assertLess(
+            self.smoke.index(marker), self.smoke.index("Generate and verify reproducibility evidence")
+        )
+
     def test_privileged_runtime_is_installed_before_lookup(self):
         setup = self.signer.index("enable-cache: false")
         install = self.signer.index("run: uv python install 3.14.10")
-        lookup = self.signer.index('PYTHON="$(uv python find 3.14.10)"')
+        lookup = self.signer.index('PYTHON="$(uv python find --managed-python 3.14.10)"')
         verify = self.signer.index('"$PYTHON" scripts/attestation_gate.py')
         sign = self.signer.index("uses: actions/attest@")
         self.assertLess(setup, install)
@@ -159,7 +175,7 @@ class AttestationWorkflowContractTest(unittest.TestCase):
         self.assertIn(".evidence/repro-manifest.json.sha256",self.signer)
 
     def test_privileged_verifier_is_stdlib_only(self):
-        self.assertIn('PYTHON="$(uv python find 3.14.10)"', self.signer)
+        self.assertIn('PYTHON="$(uv python find --managed-python 3.14.10)"', self.signer)
         self.assertIn('test -x "$PYTHON"', self.signer)
         self.assertIn('"$PYTHON" scripts/attestation_gate.py', self.signer)
         self.assertIn('sys.version_info[:3] == (3, 14, 10)', self.signer)
