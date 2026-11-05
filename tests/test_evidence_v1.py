@@ -25,7 +25,8 @@ class EvidenceTest(unittest.TestCase):
         r = copy.deepcopy(self.record)
         r["payload"]["orbit_hex"][1] = "0x1.0000000000000p-1"
         r["payload_sha256"] = digest(r["payload"])
-        self.assertEqual(verify_evidence(r)[0], "FAIL")
+        r["record_sha256"] = digest({key: val for key, val in r.items() if key != "record_sha256"})
+        self.assertEqual(verify_evidence(r), ("FAIL", "replay mismatch"))
 
     def test_unsupported_schema_abstains(self):
         r = copy.deepcopy(self.record)

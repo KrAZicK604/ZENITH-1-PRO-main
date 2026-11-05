@@ -1,6 +1,8 @@
 """Adversarial and seeded tests for the independent rational recurrence oracle."""
 import math
 import hashlib
+import ctypes
+import platform
 import unittest
 from unittest.mock import patch
 
@@ -10,6 +12,36 @@ from rational_oracle import verify_recurrence
 
 
 class RationalOracleTest(unittest.TestCase):
+    def test_failed_active_arithmetic_probe_abstains(self):
+        orbit = self.encoded(3.9, 0.2, 5)
+        with patch("rational_oracle.binary64_assumptions_hold", return_value=False):
+            self.assertEqual(verify_recurrence(3.9, 0.2, orbit)[0], "ABSTAIN")
+
+    @unittest.skipUnless(
+        platform.system() == "Linux" and platform.machine() == "x86_64"
+        and platform.libc_ver()[0] == "glibc",
+        "fenv constants in this integration test are glibc Linux x86_64 only",
+    )
+    def test_actual_directed_rounding_abstains_and_restores(self):
+        # Test-only native access; production probes use ordinary Python ops.
+        library = ctypes.CDLL(None)
+        getround = library.fegetround
+        setround = library.fesetround
+        getround.argtypes, getround.restype = [], ctypes.c_int
+        setround.argtypes, setround.restype = [ctypes.c_int], ctypes.c_int
+        orbit = self.encoded(3.9, 0.2, 5)
+        original = getround()
+        self.assertNotEqual(original, -1)
+        try:
+            for mode in (0x400, 0x800, 0xC00):
+                with self.subTest(mode=mode):
+                    self.assertEqual(setround(mode), 0)
+                    self.assertEqual(getround(), mode)
+                    self.assertEqual(verify_recurrence(3.9, 0.2, orbit)[0], "ABSTAIN")
+        finally:
+            self.assertEqual(setround(original), 0)
+        self.assertEqual(verify_recurrence(3.9, 0.2, orbit)[0], "PASS")
+
     @staticmethod
     def encoded(rate, initial, steps):
         return [state.hex() for state in logistic_orbit(rate, initial, steps)]

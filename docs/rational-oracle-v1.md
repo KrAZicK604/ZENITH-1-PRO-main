@@ -29,7 +29,9 @@ multiplications plus one subtraction, a conservative local-operation bound is
 Values violating this bound are rejected. The additive term conservatively
 allows subnormal-rounding effects. The verifier also rejects noncanonical float
 hex, NaN/infinity, altered initial conditions, out-of-range states, oversized
-input, and unsupported float arithmetic (ABSTAIN).
+input. It returns ABSTAIN when the binary64 format checks or active arithmetic
+probes fail. The probes cover conventional directed rounding and common
+flushed-subnormal modes; they do not certify every possible runtime defect.
 
 The accepted numerical parameters are the exact rational values represented
 by the binary64 inputs. This does not certify the ideal mathematical behavior
@@ -68,3 +70,26 @@ assumes conventional binary64 operations and is not a validated guarantee
 for arbitrary alternate runtimes or nonstandard floating-point environments.
 A malicious actor able to rewrite all source and evidence may also replace
 the oracle. No new mathematical discovery or production authorization is claimed.
+
+## Local bound derivation and active assumptions
+
+Let `a = fl(r*x)`, `s = fl(1-x)` and `y = fl(a*s)`, matching the simulator's
+operation order. For normal results under round-to-nearest, each operation
+contributes a relative factor `(1 + delta_i)` with `|delta_i| <= u`. The
+three-factor product differs from one by at most `gamma_3`.
+
+For binary64 `x` in `[0,1]`, nonzero `1-x` is at least `2^-53`, so the
+subtraction cannot underflow. Under gradual underflow, each multiplication
+can instead contribute at most half a minimum-subnormal unit of additive
+rounding error. Since `0 <= s <= 1`, propagation through the final multiply
+bounds those additive contributions by less than `2*2^-1074`. Thus the
+implemented `16*2^-1074` slack is conservative within these assumptions.
+This is a local forward-error allowance, not exact recurrence equality.
+
+`sys.float_info.rounds` alone does not track later environment changes.
+The oracle therefore repeats active tie-to-even and subnormal multiplication
+probes on each call, without native-library access in production code. The
+tests also exercise actual directed rounding on glibc Linux x86_64 and restore
+the original environment in a finally block. Other platforms skip only that
+native integration test. The arithmetic environment must remain stable during
+verification; probes cannot authenticate a hostile interpreter or source tree.

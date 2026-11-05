@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 import math
+import struct
 import sys
 
 MAX_STEPS = 1000
@@ -19,6 +20,36 @@ MIN_SUBNORMAL = Fraction(1, 2**1074)
 ABSOLUTE_SLACK = 16 * MIN_SUBNORMAL
 
 
+def binary64_assumptions_hold():
+    """Probe active arithmetic; float_info.rounds alone is a startup value.
+
+    These probes detect conventional directed rounding and common flushed
+    subnormal modes. They are not an attestation of an arbitrary runtime.
+    Do not cache: the floating-point environment can change after import.
+    """
+    if (sys.float_info.radix != 2 or sys.float_info.mant_dig != 53
+            or sys.float_info.rounds != 1):
+        return False
+    one = float.fromhex("0x1p+0")
+    half_ulp = float.fromhex("0x1p-53")
+    odd = float.fromhex("0x1.0000000000001p+0")
+    even = float.fromhex("0x1.0000000000002p+0")
+    tiny = float.fromhex("0x0.0000000000001p-1022")
+    normal = float.fromhex("0x1p-1022")
+    half = float.fromhex("0x1p-1")
+    one_and_half = float.fromhex("0x1.8p+0")
+    return (
+        one + half_ulp == one
+        and -one - half_ulp == -one
+        and odd + half_ulp == even
+        # Compare bits: a denormals-are-zero mode can also affect float ==.
+        and struct.pack(">d", tiny * one).hex() == "0000000000000001"
+        and struct.pack(">d", normal * half).hex() == "0008000000000000"
+        and struct.pack(">d", tiny * half).hex() == "0000000000000000"
+        and struct.pack(">d", tiny * one_and_half).hex() == "0000000000000002"
+    )
+
+
 def verify_recurrence(rate, initial_state, orbit_hex):
     """Return (PASS|FAIL|ABSTAIN, reason) without calling logistic_orbit.
 
@@ -27,8 +58,7 @@ def verify_recurrence(rate, initial_state, orbit_hex):
     with f(x) evaluated by exact rational arithmetic. This assumes three
     correctly rounded elementary float operations under round-to-nearest.
     """
-    if (sys.float_info.radix != 2 or sys.float_info.mant_dig != 53
-            or sys.float_info.rounds != 1):
+    if not binary64_assumptions_hold():
         return "ABSTAIN", "unsupported binary64 arithmetic assumptions"
     try:
         if type(rate) not in (int, float) or type(initial_state) not in (int, float):

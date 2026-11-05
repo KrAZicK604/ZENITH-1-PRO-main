@@ -21,4 +21,22 @@ implementation, so PASS is not an independent scientific oracle. Timestamp
 provenance is host-unattested. The
 implementation does not alter the application or production permissions.
 
+## Verification resource contract
+
+Before serialization, key-set construction, hashing or metadata parsing, the
+verifier accepts only plain built-in JSON values. Traversal is limited to depth
+8, 4,096 visited values (including mapping keys), 4,096 characters per string,
+and 256 bits per integer. Repeated references count on every visit. Subclasses
+are rejected rather than invoking custom serialization or container methods.
+Canonical JSON is then encoded incrementally with a 100,000-byte output cap;
+escape expansion counts against that cap. Existing full-budget generated
+records retain identical canonical bytes and checksums.
+
+These limits bound verifier work on an already-decoded object. They do not
+bound the caller's file read, JSON parser, existing input allocation, concurrent
+mutation, or operating-system resource availability. Callers must limit bytes
+before parsing and must not mutate a record during verification. MemoryError
+inside verification returns FAIL; this is not a process sandbox or a guarantee
+of recovery after an operating-system kill.
+
 Trust posture: PAPER_ONLY / PROMOTION_BLOCKED / productionAuthority NONE.
