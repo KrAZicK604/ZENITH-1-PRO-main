@@ -32,6 +32,12 @@ class EvidenceError(ValueError):
     """Evidence precondition or verification failed."""
 
 
+def file_snapshot(info) -> tuple:
+    """Exclude access time, which may legitimately change while reading."""
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_size,
+            info.st_mtime_ns, info.st_ctime_ns)
+
+
 def bounded_regular_bytes(path: Path, limit: int) -> bytes:
     """Read at most limit+1 bytes, refusing special files and leaf symlinks.
 
@@ -42,6 +48,7 @@ def bounded_regular_bytes(path: Path, limit: int) -> bytes:
         info = path.lstat()
         if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
             raise EvidenceError("evidence input is not a bounded regular file")
+        expected = file_snapshot(info)
         flags = (os.O_RDONLY | getattr(os, "O_BINARY", 0)
                  | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
         descriptor = os.open(path, flags)
@@ -49,12 +56,19 @@ def bounded_regular_bytes(path: Path, limit: int) -> bytes:
             info = os.fstat(descriptor)
             if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
                 raise EvidenceError("evidence input is not a bounded regular file")
+            if file_snapshot(info) != expected:
+                raise EvidenceError("evidence input changed before opening")
             with os.fdopen(descriptor, "rb", closefd=False) as source:
                 raw = source.read(limit + 1)
+            if len(raw) > limit:
+                raise EvidenceError("evidence input exceeds byte limit")
+            if (file_snapshot(os.fstat(descriptor)) != expected
+                    or len(raw) != info.st_size):
+                raise EvidenceError("evidence input changed while reading")
         finally:
             os.close(descriptor)
-        if len(raw) > limit:
-            raise EvidenceError("evidence input exceeds byte limit")
+        if file_snapshot(path.lstat()) != expected:
+            raise EvidenceError("evidence input path changed while reading")
         return raw
     except (OSError, MemoryError) as error:
         raise EvidenceError("missing or inaccessible evidence input") from error

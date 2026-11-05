@@ -203,10 +203,14 @@ class EvidenceTest(unittest.TestCase):
 
     def test_file_growth_still_obeys_read_cap(self):
         from types import SimpleNamespace
-        import stat
         self.path.parent.mkdir()
         self.path.write_bytes(b"x" * 129)
-        stale = SimpleNamespace(st_mode=stat.S_IFREG, st_size=0)
+        actual = self.path.stat()
+        stale = SimpleNamespace(
+            st_mode=actual.st_mode, st_size=0, st_dev=actual.st_dev,
+            st_ino=actual.st_ino, st_mtime_ns=actual.st_mtime_ns,
+            st_ctime_ns=actual.st_ctime_ns,
+        )
         with patch.object(Path, "lstat", return_value=stale):
             with patch.object(evidence.os, "fstat", return_value=stale):
                 with self.assertRaisesRegex(evidence.EvidenceError, "exceeds byte limit"):
@@ -227,6 +231,75 @@ class EvidenceTest(unittest.TestCase):
         self.write_hashed(json.dumps(obj).encode())
         with self.assertRaisesRegex(evidence.EvidenceError, "invalid file count"):
             evidence.verify(self.root, self.path)
+
+    def test_same_size_replacement_before_open_is_rejected(self):
+        self.path.parent.mkdir()
+        self.path.write_bytes(b"old")
+        replacement = self.path.with_name("replacement.json")
+        replacement.write_bytes(b"new")
+        original_open = evidence.os.open
+
+        def replace_before_open(path, flags):
+            os.replace(replacement, path)
+            return original_open(path, flags)
+
+        with patch.object(evidence.os, "open", side_effect=replace_before_open):
+            with self.assertRaisesRegex(evidence.EvidenceError, "changed before opening"):
+                evidence.bounded_regular_bytes(self.path, 128)
+
+    def test_same_size_in_place_change_during_read_is_rejected(self):
+        self.path.parent.mkdir()
+        self.path.write_bytes(b"old")
+        original_fdopen = evidence.os.fdopen
+
+        class ChangingReader:
+            def __init__(inner, descriptor, *args, **kwargs):
+                inner.source = original_fdopen(descriptor, *args, **kwargs)
+
+            def __enter__(inner):
+                inner.source.__enter__()
+                return inner
+
+            def read(inner, count):
+                raw = inner.source.read(count)
+                self.path.write_bytes(b"new")
+                info = self.path.stat()
+                os.utime(self.path, ns=(info.st_atime_ns, info.st_mtime_ns + 1_000_000_000))
+                return raw
+
+            def __exit__(inner, *args):
+                return inner.source.__exit__(*args)
+
+        with patch.object(evidence.os, "fdopen", side_effect=ChangingReader):
+            with self.assertRaisesRegex(evidence.EvidenceError, "changed while reading"):
+                evidence.bounded_regular_bytes(self.path, 128)
+
+    @unittest.skipUnless(os.name == "posix", "renaming an open file is POSIX-specific")
+    def test_path_replacement_after_descriptor_check_is_rejected(self):
+        self.path.parent.mkdir()
+        self.path.write_bytes(b"old")
+        replacement = self.path.with_name("replacement.json")
+        replacement.write_bytes(b"new")
+        original_fstat = evidence.os.fstat
+        calls = 0
+
+        def replace_after_final_fstat(descriptor):
+            nonlocal calls
+            calls += 1
+            result = original_fstat(descriptor)
+            if calls == 2:
+                os.replace(replacement, self.path)
+            return result
+
+        with patch.object(evidence.os, "fstat", side_effect=replace_after_final_fstat):
+            with self.assertRaisesRegex(evidence.EvidenceError, "path changed while reading"):
+                evidence.bounded_regular_bytes(self.path, 128)
+
+    def test_unchanged_file_reads_repeatably(self):
+        self.path.parent.mkdir()
+        self.path.write_bytes(b"stable")
+        for _ in range(3):
+            self.assertEqual(evidence.bounded_regular_bytes(self.path, 128), b"stable")
 
 
 if __name__ == "__main__":

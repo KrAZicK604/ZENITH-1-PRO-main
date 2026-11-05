@@ -48,10 +48,17 @@ PROMOTION_BLOCKED with production authority NONE.
 
 Verification reads regular files only: at most 1,000,000 manifest bytes and
 4,096 checksum bytes. Oversized files, special files and leaf symlinks are
-rejected. Descriptor checks and a capped read also cover file replacement or
-growth between the initial size check and reading. Nonblocking open is used
+rejected. Descriptor checks and a capped read enforce the size/type limits even
+across replacement or growth. Device, inode, mode, size, modification time and
+change time must also match before opening, after reading and at the final path
+check; bytes read must equal the recorded size. These checks reject observable
+file replacement and in-place changes. Access time is excluded because reading
+can legitimately change it. Nonblocking open is used
 where supported so a raced-in POSIX FIFO cannot stall the descriptor check.
-This does not provide general isolation against hostile parent-directory races.
+These checks are not a transaction across the manifest and sidecar, cannot
+prevent changes after the final check, and do not defeat a hostile host able to
+forge filesystem identity or metadata. Parent-directory races still require
+external isolation.
 
 Manifest JSON must be UTF-8, with nesting depth at most 16, no duplicate object
 members, no nonfinite numeric values and no integer token longer than 128
