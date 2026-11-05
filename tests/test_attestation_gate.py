@@ -192,10 +192,10 @@ class AttestationWorkflowContractTest(unittest.TestCase):
         # controls PYTHONPATH. This exercises Python itself, not just YAML text.
         with tempfile.TemporaryDirectory() as attacker:
             Path(attacker, "attestation_gate.py").write_text(
-                "raise RuntimeError('PYTHONPATH_SHADOWED')\\n", encoding="utf-8"
+                "raise RuntimeError('PYTHONPATH_SHADOWED')\n", encoding="utf-8"
             )
             Path(attacker, "repro_evidence.py").write_text(
-                "raise RuntimeError('PYTHONPATH_SHADOWED')\\n", encoding="utf-8"
+                "raise RuntimeError('PYTHONPATH_SHADOWED')\n", encoding="utf-8"
             )
             env = os.environ.copy()
             env["PYTHONPATH"] = attacker
