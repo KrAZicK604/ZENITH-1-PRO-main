@@ -2,7 +2,11 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 HERE = Path(__file__).resolve().parents[1]
@@ -156,7 +160,7 @@ class AttestationWorkflowContractTest(unittest.TestCase):
         setup = self.signer.index("enable-cache: false")
         install = self.signer.index("run: uv python install 3.14.10")
         lookup = self.signer.index('PYTHON="$(uv python find --managed-python 3.14.10)"')
-        verify = self.signer.index('"$PYTHON" -I scripts/attestation_gate.py')
+        verify = self.signer.index("\"$PYTHON\" -I -c 'import pathlib, sys; sys.path.insert(0, str(pathlib.Path(\"scripts\").resolve(strict=True))); from attestation_gate import main; raise SystemExit(main())'")
         sign = self.signer.index("uses: actions/attest@")
         self.assertLess(setup, install)
         self.assertLess(install, lookup)
@@ -168,24 +172,50 @@ class AttestationWorkflowContractTest(unittest.TestCase):
         self.assertIn("digest-mismatch: error",self.signer)
         self.assertIn("name: repro-evidence",self.signer)
         self.assertIn("path: .evidence",self.signer)
-        verify=self.signer.index('"$PYTHON" -I scripts/attestation_gate.py')
+        verify=self.signer.index("\"$PYTHON\" -I -c 'import pathlib, sys; sys.path.insert(0, str(pathlib.Path(\"scripts\").resolve(strict=True))); from attestation_gate import main; raise SystemExit(main())'")
         sign=self.signer.index("uses: actions/attest@")
         self.assertLess(verify,sign)
         self.assertIn(".evidence/repro-manifest.json",self.signer)
         self.assertIn(".evidence/repro-manifest.json.sha256",self.signer)
 
     def test_privileged_verifier_uses_isolated_mode(self):
-        command = '"$PYTHON" -I scripts/attestation_gate.py'
+        command = "\"$PYTHON\" -I -c 'import pathlib, sys; sys.path.insert(0, str(pathlib.Path(\"scripts\").resolve(strict=True))); from attestation_gate import main; raise SystemExit(main())'"
         self.assertEqual(self.signer.count(command), 1)
         self.assertNotIn('"$PYTHON" scripts/attestation_gate.py', self.signer)
         self.assertLess(
             self.signer.index(command), self.signer.index("uses: actions/attest@")
         )
 
+    def test_isolated_interpreter_can_import_checkout_siblings(self):
+        # Regression: -I script.py does not put script.py's directory on sys.path.
+        # Explicitly add only the checked-out scripts path, even if an attacker
+        # controls PYTHONPATH. This exercises Python itself, not just YAML text.
+        with tempfile.TemporaryDirectory() as attacker:
+            Path(attacker, "attestation_gate.py").write_text(
+                "raise RuntimeError('PYTHONPATH_SHADOWED')\\n", encoding="utf-8"
+            )
+            Path(attacker, "repro_evidence.py").write_text(
+                "raise RuntimeError('PYTHONPATH_SHADOWED')\\n", encoding="utf-8"
+            )
+            env = os.environ.copy()
+            env["PYTHONPATH"] = attacker
+            command = (
+                'import pathlib, sys; '
+                'sys.path.insert(0, str(pathlib.Path("scripts").resolve(strict=True))); '
+                'from attestation_gate import main; from repro_evidence import verify; '
+                'raise SystemExit(0 if callable(main) and callable(verify) else 1)'
+            )
+            result = subprocess.run(
+                [sys.executable, "-I", "-c", command],
+                cwd=HERE, env=env, capture_output=True, text=True,
+                check=False, timeout=20,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_privileged_verifier_is_stdlib_only(self):
         self.assertIn('PYTHON="$(uv python find --managed-python 3.14.10)"', self.signer)
         self.assertIn('test -x "$PYTHON"', self.signer)
-        self.assertIn('"$PYTHON" -I scripts/attestation_gate.py', self.signer)
+        self.assertIn("\"$PYTHON\" -I -c 'import pathlib, sys; sys.path.insert(0, str(pathlib.Path(\"scripts\").resolve(strict=True))); from attestation_gate import main; raise SystemExit(main())'", self.signer)
         self.assertIn('sys.version_info[:3] == (3, 14, 10)', self.signer)
         for unsafe in (
             "uv sync ", "uv run ", "uv lock --check", "enable-cache: true",
