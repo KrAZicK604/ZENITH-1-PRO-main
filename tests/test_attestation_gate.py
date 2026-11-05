@@ -156,7 +156,7 @@ class AttestationWorkflowContractTest(unittest.TestCase):
         setup = self.signer.index("enable-cache: false")
         install = self.signer.index("run: uv python install 3.14.10")
         lookup = self.signer.index('PYTHON="$(uv python find --managed-python 3.14.10)"')
-        verify = self.signer.index('"$PYTHON" scripts/attestation_gate.py')
+        verify = self.signer.index('"$PYTHON" -I scripts/attestation_gate.py')
         sign = self.signer.index("uses: actions/attest@")
         self.assertLess(setup, install)
         self.assertLess(install, lookup)
@@ -168,16 +168,24 @@ class AttestationWorkflowContractTest(unittest.TestCase):
         self.assertIn("digest-mismatch: error",self.signer)
         self.assertIn("name: repro-evidence",self.signer)
         self.assertIn("path: .evidence",self.signer)
-        verify=self.signer.index('"$PYTHON" scripts/attestation_gate.py')
+        verify=self.signer.index('"$PYTHON" -I scripts/attestation_gate.py')
         sign=self.signer.index("uses: actions/attest@")
         self.assertLess(verify,sign)
         self.assertIn(".evidence/repro-manifest.json",self.signer)
         self.assertIn(".evidence/repro-manifest.json.sha256",self.signer)
 
+    def test_privileged_verifier_uses_isolated_mode(self):
+        command = '"$PYTHON" -I scripts/attestation_gate.py'
+        self.assertEqual(self.signer.count(command), 1)
+        self.assertNotIn('"$PYTHON" scripts/attestation_gate.py', self.signer)
+        self.assertLess(
+            self.signer.index(command), self.signer.index("uses: actions/attest@")
+        )
+
     def test_privileged_verifier_is_stdlib_only(self):
         self.assertIn('PYTHON="$(uv python find --managed-python 3.14.10)"', self.signer)
         self.assertIn('test -x "$PYTHON"', self.signer)
-        self.assertIn('"$PYTHON" scripts/attestation_gate.py', self.signer)
+        self.assertIn('"$PYTHON" -I scripts/attestation_gate.py', self.signer)
         self.assertIn('sys.version_info[:3] == (3, 14, 10)', self.signer)
         for unsafe in (
             "uv sync ", "uv run ", "uv lock --check", "enable-cache: true",
