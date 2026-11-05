@@ -2,7 +2,11 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
+import subprocess  # nosec B404 - controlled test interpreter, fixed argv, shell disabled
+import sys
+import tempfile
 import unittest
 
 HERE = Path(__file__).resolve().parents[1]
@@ -136,20 +140,82 @@ class AttestationWorkflowContractTest(unittest.TestCase):
                 self.assertIn(clause, condition)
         self.assertNotIn("||", condition)
 
+    def test_unprivileged_bootstrap_preflight_isolated_from_signing(self):
+        marker = "      - name: Validate isolated attestation Python bootstrap without OIDC"
+        self.assertEqual(self.smoke.count(marker), 1)
+        preflight = self.smoke.split(marker, 1)[1].split("      - name:", 1)[0]
+        self.assertIn("UV_PYTHON_INSTALL_DIR: ${{ runner.temp }}/attestation-bootstrap-preflight", preflight)
+        self.assertIn('test ! -e "$UV_PYTHON_INSTALL_DIR"', preflight)
+        self.assertIn("uv python install 3.14.10", preflight)
+        self.assertIn('PYTHON="$(uv python find --managed-python 3.14.10)"', preflight)
+        self.assertIn('test -x "$PYTHON"', preflight)
+        self.assertIn('"$UV_PYTHON_INSTALL_DIR"/*', preflight)
+        self.assertIn('"$PYTHON" -I -c', preflight)
+        self.assertNotIn("id-token: write", self.smoke)
+        self.assertLess(
+            self.smoke.index(marker), self.smoke.index("Generate and verify reproducibility evidence")
+        )
+
+    def test_privileged_runtime_is_installed_before_lookup(self):
+        setup = self.signer.index("enable-cache: false")
+        install = self.signer.index("run: uv python install 3.14.10")
+        lookup = self.signer.index('PYTHON="$(uv python find --managed-python 3.14.10)"')
+        verify = self.signer.index("\"$PYTHON\" -I -c 'import pathlib, sys; sys.path.insert(0, str(pathlib.Path(\"scripts\").resolve(strict=True))); from attestation_gate import main; raise SystemExit(main())'")
+        sign = self.signer.index("uses: actions/attest@")
+        self.assertLess(setup, install)
+        self.assertLess(install, lookup)
+        self.assertLess(lookup, verify)
+        self.assertLess(verify, sign)
+        self.assertNotIn("uv sync ", self.signer)
+
     def test_source_provenance_verified_before_signing(self):
         self.assertIn("digest-mismatch: error",self.signer)
         self.assertIn("name: repro-evidence",self.signer)
         self.assertIn("path: .evidence",self.signer)
-        verify=self.signer.index('"$PYTHON" scripts/attestation_gate.py')
+        verify=self.signer.index("\"$PYTHON\" -I -c 'import pathlib, sys; sys.path.insert(0, str(pathlib.Path(\"scripts\").resolve(strict=True))); from attestation_gate import main; raise SystemExit(main())'")
         sign=self.signer.index("uses: actions/attest@")
         self.assertLess(verify,sign)
         self.assertIn(".evidence/repro-manifest.json",self.signer)
         self.assertIn(".evidence/repro-manifest.json.sha256",self.signer)
 
+    def test_privileged_verifier_uses_isolated_mode(self):
+        command = "\"$PYTHON\" -I -c 'import pathlib, sys; sys.path.insert(0, str(pathlib.Path(\"scripts\").resolve(strict=True))); from attestation_gate import main; raise SystemExit(main())'"
+        self.assertEqual(self.signer.count(command), 1)
+        self.assertNotIn('"$PYTHON" scripts/attestation_gate.py', self.signer)
+        self.assertLess(
+            self.signer.index(command), self.signer.index("uses: actions/attest@")
+        )
+
+    def test_isolated_interpreter_can_import_checkout_siblings(self):
+        # Regression: -I script.py does not put script.py's directory on sys.path.
+        # Explicitly add only the checked-out scripts path, even if an attacker
+        # controls PYTHONPATH. This exercises Python itself, not just YAML text.
+        with tempfile.TemporaryDirectory() as attacker:
+            Path(attacker, "attestation_gate.py").write_text(
+                "raise RuntimeError('PYTHONPATH_SHADOWED')\n", encoding="utf-8"
+            )
+            Path(attacker, "repro_evidence.py").write_text(
+                "raise RuntimeError('PYTHONPATH_SHADOWED')\n", encoding="utf-8"
+            )
+            env = os.environ.copy()
+            env["PYTHONPATH"] = attacker
+            command = (
+                'import pathlib, sys; '
+                'sys.path.insert(0, str(pathlib.Path("scripts").resolve(strict=True))); '
+                'from attestation_gate import main; from repro_evidence import verify; '
+                'raise SystemExit(0 if callable(main) and callable(verify) else 1)'
+            )
+            result = subprocess.run(  # nosec B603 - sys.executable, fixed flags, shell=False
+                [sys.executable, "-I", "-c", command],
+                cwd=HERE, env=env, capture_output=True, text=True,
+                check=False, timeout=20,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_privileged_verifier_is_stdlib_only(self):
-        self.assertIn('PYTHON="$(uv python find 3.14.10)"', self.signer)
+        self.assertIn('PYTHON="$(uv python find --managed-python 3.14.10)"', self.signer)
         self.assertIn('test -x "$PYTHON"', self.signer)
-        self.assertIn('"$PYTHON" scripts/attestation_gate.py', self.signer)
+        self.assertIn("\"$PYTHON\" -I -c 'import pathlib, sys; sys.path.insert(0, str(pathlib.Path(\"scripts\").resolve(strict=True))); from attestation_gate import main; raise SystemExit(main())'", self.signer)
         self.assertIn('sys.version_info[:3] == (3, 14, 10)', self.signer)
         for unsafe in (
             "uv sync ", "uv run ", "uv lock --check", "enable-cache: true",
