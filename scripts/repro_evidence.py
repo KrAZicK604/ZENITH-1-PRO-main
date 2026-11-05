@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -19,12 +20,101 @@ import time
 from datetime import datetime, timezone
 
 SCHEMA_VERSION = 1
+MAX_MANIFEST_BYTES = 1_000_000
+MAX_CHECKSUM_BYTES = 4096
+MAX_JSON_DEPTH = 16
+MAX_FILES = 4096
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 
 
 class EvidenceError(ValueError):
     """Evidence precondition or verification failed."""
+
+
+def bounded_regular_bytes(path: Path, limit: int) -> bytes:
+    """Read at most limit+1 bytes, refusing special files and leaf symlinks.
+
+    Nonblocking open also prevents a raced-in POSIX FIFO from blocking before
+    the descriptor type check. Parent-directory races require external isolation.
+    """
+    try:
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
+            raise EvidenceError("evidence input is not a bounded regular file")
+        flags = (os.O_RDONLY | getattr(os, "O_BINARY", 0)
+                 | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        descriptor = os.open(path, flags)
+        try:
+            info = os.fstat(descriptor)
+            if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
+                raise EvidenceError("evidence input is not a bounded regular file")
+            with os.fdopen(descriptor, "rb", closefd=False) as source:
+                raw = source.read(limit + 1)
+        finally:
+            os.close(descriptor)
+        if len(raw) > limit:
+            raise EvidenceError("evidence input exceeds byte limit")
+        return raw
+    except (OSError, MemoryError) as error:
+        raise EvidenceError("missing or inaccessible evidence input") from error
+
+
+def parse_manifest(raw: bytes) -> dict:
+    """Parse bounded UTF-8 JSON without duplicate members or deep nesting."""
+    if len(raw) > MAX_MANIFEST_BYTES:
+        raise EvidenceError("manifest exceeds byte limit")
+    depth, in_string, escaped = 0, False, False
+    for value in raw:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif value == 92:  # Backslash.
+                escaped = True
+            elif value == 34:  # Quote.
+                in_string = False
+        elif value == 34:
+            in_string = True
+        elif value in (91, 123):  # Array/object opening delimiter.
+            depth += 1
+            if depth > MAX_JSON_DEPTH:
+                raise EvidenceError("manifest nesting exceeds limit")
+        elif value in (93, 125):
+            depth -= 1
+            if depth < 0:
+                raise EvidenceError("invalid manifest nesting")
+
+    def unique_members(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise EvidenceError("duplicate JSON member")
+            result[key] = value
+        return result
+
+    def reject_constant(value):
+        raise EvidenceError("nonfinite JSON constant")
+
+    def bounded_integer(value):
+        if len(value) > 128:
+            raise EvidenceError("manifest integer exceeds digit limit")
+        return int(value)
+
+    def finite_float(value):
+        result = float(value)
+        if not math.isfinite(result):
+            raise EvidenceError("nonfinite JSON number")
+        return result
+
+    try:
+        data = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_members,
+                          parse_constant=reject_constant, parse_int=bounded_integer,
+                          parse_float=finite_float)
+    except (ValueError, UnicodeError, RecursionError, MemoryError) as error:
+        raise EvidenceError("malformed manifest JSON") from error
+    if not isinstance(data, dict):
+        raise EvidenceError("manifest must be a JSON object")
+    return data
 
 
 def git(root: Path, *args: str) -> bytes:
@@ -78,8 +168,8 @@ def file_digest(path: Path) -> str:
 def tracked_files(root: Path) -> list[str]:
     raw = git(root, "ls-files", "-z")
     names = [os.fsdecode(item) for item in raw.split(b"\0") if item]
-    if not names or names != sorted(set(names)):
-        raise EvidenceError("tracked file index is empty, duplicated, or not sorted")
+    if not names or len(names) > MAX_FILES or names != sorted(set(names)):
+        raise EvidenceError("tracked file index is empty, oversized, duplicated, or not sorted")
     return names
 
 
@@ -159,6 +249,8 @@ def generate(root: Path, output: Path) -> dict:
     safe_evidence_output(root, output)  # Recheck after directory creation.
     payload = (json.dumps(evidence, sort_keys=True, indent=2, ensure_ascii=True) + "\n").encode("utf-8")
     checksum = (hashlib.sha256(payload).hexdigest() + "  " + output.name + "\n").encode("ascii")
+    if len(payload) > MAX_MANIFEST_BYTES or len(checksum) > MAX_CHECKSUM_BYTES:
+        raise EvidenceError("generated evidence exceeds input byte limits")
     created: list[Path] = []
     try:
         for path, content in ((output, payload), (checksum_path, checksum)):
@@ -173,15 +265,18 @@ def generate(root: Path, output: Path) -> dict:
 
 
 def verify(root: Path, manifest: Path) -> dict:
-    raw = manifest.read_bytes()
-    sidecar = manifest.with_name(manifest.name + ".sha256").read_text(encoding="ascii")
+    raw = bounded_regular_bytes(manifest, MAX_MANIFEST_BYTES)
+    sidecar = bounded_regular_bytes(
+        manifest.with_name(manifest.name + ".sha256"), MAX_CHECKSUM_BYTES
+    ).decode("ascii")
     expected = sidecar.split("  ")
     if len(expected) != 2 or not SHA256.fullmatch(expected[0]) or expected[1] != manifest.name + "\n":
         raise EvidenceError("invalid sidecar checksum")
     if hashlib.sha256(raw).hexdigest() != expected[0]:
         raise EvidenceError("manifest checksum mismatch")
-    data = json.loads(raw)
-    if (not isinstance(data, dict) or data.get("schema_version") != SCHEMA_VERSION
+    data = parse_manifest(raw)
+    if (type(data.get("schema_version")) is not int
+        or data.get("schema_version") != SCHEMA_VERSION
         or data.get("status") != "PAPER_ONLY" or data.get("promotion_blocked") is not True
         or data.get("production_authority") != "NONE"
         or data.get("integrity") != "SHA256_UNSIGNED_NO_EXTERNAL_ATTESTATION"
@@ -189,7 +284,10 @@ def verify(root: Path, manifest: Path) -> dict:
         raise EvidenceError("invalid fail-closed evidence fields")
     if data.get("git_head") != commit_sha(root):
         raise EvidenceError("manifest is not for the checked-out Git commit")
-    if not isinstance(data.get("files"), list) or data.get("file_count") != len(data["files"]):
+    if (not isinstance(data.get("files"), list)
+        or type(data.get("file_count")) is not int
+        or not 1 <= data["file_count"] <= MAX_FILES
+        or data["file_count"] != len(data["files"])):
         raise EvidenceError("invalid file count")
     names = [entry.get("path") for entry in data["files"] if isinstance(entry, dict)]
     if len(names) != len(data["files"]) or names != tracked_files(root):
@@ -219,7 +317,7 @@ def main() -> int:
     manifest = args.manifest if args.manifest.is_absolute() else root / args.manifest
     try:
         result = generate(root, manifest) if args.operation == "create" else verify(root, manifest)
-    except (EvidenceError, OSError, ValueError, UnicodeError, subprocess.SubprocessError) as error:
+    except (EvidenceError, OSError, ValueError, UnicodeError, MemoryError, subprocess.SubprocessError) as error:
         print(f"EVIDENCE_FAIL: {error}", file=sys.stderr)
         return 1
     print(f"EVIDENCE_{'CREATED' if args.operation == 'create' else 'VERIFIED'} commit={result['git_head']} files={result['file_count']} authority=NONE unsigned=true")

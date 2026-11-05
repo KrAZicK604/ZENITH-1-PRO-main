@@ -44,6 +44,30 @@ PROMOTION_BLOCKED with production authority NONE.
 
 ## Independent offline check
 
+### Manifest input bounds
+
+Verification reads regular files only: at most 1,000,000 manifest bytes and
+4,096 checksum bytes. Oversized files, special files and leaf symlinks are
+rejected. Descriptor checks and a capped read also cover file replacement or
+growth between the initial size check and reading. Nonblocking open is used
+where supported so a raced-in POSIX FIFO cannot stall the descriptor check.
+This does not provide general isolation against hostile parent-directory races.
+
+Manifest JSON must be UTF-8, with nesting depth at most 16, no duplicate object
+members, no nonfinite numeric values and no integer token longer than 128
+characters. Escaped quotes and delimiters inside strings do not count as
+structural nesting. Schema version and file count must be actual integers,
+not booleans. The file list is capped at 4,096 entries. Generation refuses to
+publish evidence beyond the same size/file-count limits; valid generated
+evidence retains its existing serialization and checksum format.
+
+These are bounded-input controls, not a total CPU/memory sandbox for the Git
+checkout, Git subprocesses or source-file hashing. The limits require a
+separately reviewed adjustment if repository growth exceeds them. They do not
+authenticate a runner, authorize promotion or replace independent review.
+
+### Running the verifier
+
 Check out the manifest's exact git_head (on PRs this may be a generated merge
 commit rather than the branch tip). Download both files from the GitHub
 repro-evidence artifact into .evidence/ and run:

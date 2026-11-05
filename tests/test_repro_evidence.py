@@ -108,6 +108,126 @@ class EvidenceTest(unittest.TestCase):
         self.path.with_name(self.path.name + ".sha256").write_text(hashlib.sha256(raw).hexdigest() + "  " + self.path.name + "\n")
         with self.assertRaises(evidence.EvidenceError): evidence.verify(self.root, self.path)
 
+    def write_hashed(self, raw):
+        self.path.parent.mkdir(exist_ok=True)
+        self.path.write_bytes(raw)
+        self.path.with_name(self.path.name + ".sha256").write_text(
+            hashlib.sha256(raw).hexdigest() + "  " + self.path.name + "\n"
+        )
+
+    def test_oversized_manifest_rejected_before_json_or_git(self):
+        self.write_hashed(b" " * (evidence.MAX_MANIFEST_BYTES + 1))
+        with patch.object(evidence.json, "loads", side_effect=AssertionError("JSON reached")):
+            with patch.object(evidence, "git", side_effect=AssertionError("Git reached")):
+                with self.assertRaisesRegex(evidence.EvidenceError, "bounded regular file"):
+                    evidence.verify(self.root, self.path)
+
+    def test_oversized_sidecar_rejected_before_json_or_git(self):
+        self.write_hashed(b"{}")
+        self.path.with_name(self.path.name + ".sha256").write_bytes(
+            b"x" * (evidence.MAX_CHECKSUM_BYTES + 1)
+        )
+        with patch.object(evidence.json, "loads", side_effect=AssertionError("JSON reached")):
+            with self.assertRaisesRegex(evidence.EvidenceError, "bounded regular file"):
+                evidence.verify(self.root, self.path)
+
+    def test_deep_json_rejected_before_parser(self):
+        count = evidence.MAX_JSON_DEPTH + 1
+        self.write_hashed(b"[" * count + b"0" + b"]" * count)
+        with patch.object(evidence.json, "loads", side_effect=AssertionError("parser reached")):
+            with self.assertRaisesRegex(evidence.EvidenceError, "nesting exceeds"):
+                evidence.verify(self.root, self.path)
+
+    def test_rehashed_duplicate_safety_member_rejected(self):
+        evidence.generate(self.root, self.path)
+        raw = self.path.read_bytes().replace(
+            b'"production_authority": "NONE"',
+            b'"production_authority": "PRODUCTION", "production_authority": "NONE"',
+        )
+        self.write_hashed(raw)
+        with self.assertRaisesRegex(evidence.EvidenceError, "malformed manifest JSON"):
+            evidence.verify(self.root, self.path)
+
+    def test_boolean_schema_and_file_count_rejected(self):
+        evidence.generate(self.root, self.path)
+        original = json.loads(self.path.read_bytes())
+        for key in ("schema_version", "file_count"):
+            with self.subTest(key=key):
+                changed = dict(original)
+                changed[key] = True
+                self.write_hashed(json.dumps(changed).encode())
+                with self.assertRaises(evidence.EvidenceError):
+                    evidence.verify(self.root, self.path)
+
+    def test_nonfinite_and_long_numeric_inputs_rejected(self):
+        for value in (b"NaN", b"Infinity", b"-Infinity", b"1e9999", b"9" * 129):
+            with self.subTest(value=value[:20]):
+                self.write_hashed(b'{"extra":' + value + b"}")
+                with self.assertRaises(evidence.EvidenceError):
+                    evidence.verify(self.root, self.path)
+
+    def test_delimiters_and_escaped_quotes_in_strings_parse_normally(self):
+        obj = {"text": '[{\\"\\}]' * 20}
+        self.assertEqual(evidence.parse_manifest(json.dumps(obj).encode()), obj)
+
+    def test_truncated_json_and_utf8_errors_are_normalized(self):
+        for raw in (b'{"x":', b'{"x":"\xff"}'):
+            with self.subTest(raw=raw), self.assertRaises(evidence.EvidenceError):
+                evidence.parse_manifest(raw)
+
+    def test_parser_resource_exceptions_are_normalized(self):
+        for error in (RecursionError, MemoryError):
+            with self.subTest(error=error):
+                with patch.object(evidence.json, "loads", side_effect=error):
+                    with self.assertRaisesRegex(evidence.EvidenceError, "malformed manifest JSON"):
+                        evidence.parse_manifest(b"{}")
+
+    def test_input_leaf_symlink_rejected(self):
+        evidence.generate(self.root, self.path)
+        saved = self.path.with_name("saved.json")
+        self.path.rename(saved)
+        try:
+            self.path.symlink_to(saved)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks unavailable")
+        with self.assertRaisesRegex(evidence.EvidenceError, "bounded regular file"):
+            evidence.verify(self.root, self.path)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "POSIX FIFO support required")
+    def test_fifo_rejected_without_opening(self):
+        self.path.parent.mkdir()
+        os.mkfifo(self.path)
+        with patch.object(evidence.os, "open", side_effect=AssertionError("FIFO opened")):
+            with self.assertRaisesRegex(evidence.EvidenceError, "bounded regular file"):
+                evidence.verify(self.root, self.path)
+
+    def test_file_growth_still_obeys_read_cap(self):
+        from types import SimpleNamespace
+        import stat
+        self.path.parent.mkdir()
+        self.path.write_bytes(b"x" * 129)
+        stale = SimpleNamespace(st_mode=stat.S_IFREG, st_size=0)
+        with patch.object(Path, "lstat", return_value=stale):
+            with patch.object(evidence.os, "fstat", return_value=stale):
+                with self.assertRaisesRegex(evidence.EvidenceError, "exceeds byte limit"):
+                    evidence.bounded_regular_bytes(self.path, 128)
+
+    def test_generation_refuses_evidence_above_verifier_cap(self):
+        with patch.object(evidence, "MAX_MANIFEST_BYTES", 16):
+            with self.assertRaisesRegex(evidence.EvidenceError, "generated evidence exceeds"):
+                evidence.generate(self.root, self.path)
+        self.assertFalse(self.path.exists())
+        self.assertFalse(self.path.with_name(self.path.name + ".sha256").exists())
+
+    def test_manifest_file_count_limit_rejected(self):
+        evidence.generate(self.root, self.path)
+        obj = json.loads(self.path.read_bytes())
+        obj["files"] = obj["files"] * (evidence.MAX_FILES + 1)
+        obj["file_count"] = len(obj["files"])
+        self.write_hashed(json.dumps(obj).encode())
+        with self.assertRaisesRegex(evidence.EvidenceError, "invalid file count"):
+            evidence.verify(self.root, self.path)
+
 
 if __name__ == "__main__":
     unittest.main()
