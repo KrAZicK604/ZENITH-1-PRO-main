@@ -4,7 +4,7 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
-import subprocess
+import subprocess  # nosec B404 - controlled test interpreter, fixed argv, shell disabled
 import sys
 import tempfile
 import unittest
@@ -205,7 +205,7 @@ class AttestationWorkflowContractTest(unittest.TestCase):
                 'from attestation_gate import main; from repro_evidence import verify; '
                 'raise SystemExit(0 if callable(main) and callable(verify) else 1)'
             )
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603 - sys.executable, fixed flags, shell=False
                 [sys.executable, "-I", "-c", command],
                 cwd=HERE, env=env, capture_output=True, text=True,
                 check=False, timeout=20,
