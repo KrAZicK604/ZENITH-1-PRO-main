@@ -44,6 +44,53 @@ PROMOTION_BLOCKED with production authority NONE.
 
 ## Independent offline check
 
+### Manifest input bounds
+
+Verification reads regular files only: at most 1,000,000 manifest bytes and
+4,096 checksum bytes. Oversized files, special files and leaf symlinks are
+rejected. Descriptor checks and a capped read enforce the size/type limits even
+across replacement or growth. Device, inode, mode, size, modification time and
+change time must also match before opening, after reading and at the final path
+check; bytes read must equal the recorded size. These checks reject observable
+file replacement and in-place changes. Access time is excluded because reading
+can legitimately change it. Nonblocking open is used
+where supported so a raced-in POSIX FIFO cannot stall the descriptor check.
+These checks are not a transaction across the manifest and sidecar, cannot
+prevent changes after the final check, and do not defeat a hostile host able to
+forge filesystem identity or metadata. Parent-directory races still require
+external isolation.
+
+Manifest JSON must be UTF-8, with nesting depth at most 16, no duplicate object
+members, no nonfinite numeric values and no integer token longer than 128
+characters. Escaped quotes and delimiters inside strings do not count as
+structural nesting. Schema version and file count must be actual integers,
+not booleans. The file list is capped at 4,096 entries. Generation refuses to
+publish evidence beyond the same size/file-count limits; valid generated
+evidence retains its existing serialization and checksum format.
+
+These are bounded-input controls, not a total CPU/memory sandbox for the Git
+checkout, Git subprocesses or source-file hashing. The limits require a
+separately reviewed adjustment if repository growth exceeds them. They do not
+authenticate a runner, authorize promotion or replace independent review.
+
+### Running the verifier
+
+Metadata is validated before the Git comparison: timestamps use the generator's
+canonical `YYYY-MM-DDTHH:MM:SSZ` form and a valid calendar date, elapsed duration
+is a nonnegative integer (not a boolean), and Python version has three numeric
+components. The CI context must contain exactly the five generated string
+fields. A nonempty context SHA must equal the manifest commit; nonempty run IDs
+and attempts must be positive ASCII decimal strings. Empty context values remain
+permitted for local records. Generation applies the same metadata checks before
+writing a record.
+
+These are syntax/consistency checks only. A well-formed invented timestamp,
+duration, Python version or CI origin can still pass unsigned verification when
+the source bytes match. The trusted-main signing gate separately checks actual
+workflow context, and signature policy is a separate consumer verification step.
+No host clock, elapsed measurement, Python-runtime claim or sender is thereby
+authenticated. Malformed metadata produces an explicit CLI failure.
+
 Check out the manifest's exact git_head (on PRs this may be a generated merge
 commit rather than the branch tip). Download both files from the GitHub
 repro-evidence artifact into .evidence/ and run:
