@@ -397,6 +397,44 @@ class EvidenceTest(unittest.TestCase):
         self.assertNotIn("Traceback", result.stderr)
         self.assertNotIn("EVIDENCE_VERIFIED", result.stdout)
 
+    def replace_original_commit_view(self):
+        """Keep HEAD's identity while the index/checkout contain another tree."""
+        original = evidence.commit_sha(self.root)
+        (self.root / "sample.py").write_text("print('changed')\n")
+        evidence.git(self.root, "add", "sample.py")
+        evidence.git(self.root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                     "commit", "-qm", "alternate fixture")
+        alternate = evidence.commit_sha(self.root)
+        evidence.git(self.root, "replace", original, alternate)
+        evidence.git(self.root, "reset", "--soft", original)
+        self.assertEqual(evidence.commit_sha(self.root), original)
+
+    def test_replacement_ref_cannot_hide_changed_checkout_during_generation(self):
+        self.replace_original_commit_view()
+        with self.assertRaisesRegex(evidence.EvidenceError, "tracked working tree is dirty"):
+            evidence.generate(self.root, self.path)
+
+    def test_rehashed_manifest_with_replacement_ref_is_rejected(self):
+        record = evidence.generate(self.root, self.path)
+        self.replace_original_commit_view()
+        record["files"][0]["sha256"] = hashlib.sha256(
+            (self.root / "sample.py").read_bytes()
+        ).hexdigest()
+        self.write_hashed(json.dumps(record).encode())
+        with self.assertRaisesRegex(evidence.EvidenceError, "tracked working tree differs"):
+            evidence.verify(self.root, self.path)
+
+    def test_committed_blob_comparison_ignores_replacement_refs(self):
+        self.replace_original_commit_view()
+        with self.assertRaisesRegex(evidence.EvidenceError, "committed Git object"):
+            evidence.assert_committed_files(self.root, ["sample.py"])
+
+    def test_custom_replacement_namespace_is_ignored(self):
+        with patch.dict(os.environ, {"GIT_REPLACE_REF_BASE": "refs/fixture-replacements/"}):
+            self.replace_original_commit_view()
+            with self.assertRaisesRegex(evidence.EvidenceError, "committed Git object"):
+                evidence.assert_committed_files(self.root, ["sample.py"])
+
 
 if __name__ == "__main__":
     unittest.main()
