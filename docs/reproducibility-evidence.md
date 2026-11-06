@@ -17,17 +17,10 @@ Generation fails closed for dirty tracked files, GITHUB_SHA mismatch, unsafe pat
 symlinks, empty or duplicate tracking lists, and existing evidence. Creation also
 checks every tracked file against the committed Git blob, including files Git
 status may hide through assume-unchanged or skip-worktree flags. Git
-commands disable replacement-object interpretation with `--no-replace-objects`,
-so the claimed commit resolves to its actual object tree rather than a locally
-substituted view. This also applies when a custom replacement-ref namespace is
-selected. They disable the repository-configurable core.fsmonitor hook, preventing
+commands disable the repository-configurable core.fsmonitor hook, preventing
 this Git command path from executing an untrusted filesystem-monitor program.
 Other untrusted repository configuration and hostile runners remain separate
 trust concerns; this is not a full Git sandbox.
-
-The replacement-ref controls cover generation, verification of a rehashed
-manifest and the direct committed-blob comparison. They do not authenticate
-the Git executable, runner, working repository or an externally supplied commit.
 
 Evidence *creation* is restricted to a nonsymlink path under the checked-out
 repository's `.evidence/` directory, not merely somewhere inside the checkout.
