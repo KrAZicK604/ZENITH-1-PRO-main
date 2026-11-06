@@ -12,6 +12,7 @@ to initial conditions.
 - visualizes both trajectories and their divergence on a logarithmic scale;
 - estimates a finite-time Lyapunov exponent after a bounded transient and
   labels the observed regime without claiming long-term proof;
+- detects short repeating orbit cycles in the current trajectory;
 - plots a deterministic bifurcation diagram across a bounded growth-rate sweep;
 - performs no network requests, file writes, or real-world execution.
 

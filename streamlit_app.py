@@ -4,6 +4,7 @@ import streamlit as st
 
 from bifurcation import bifurcation_points
 from logistic_map import logistic_orbit, lyapunov_exponent
+from periodicity import estimate_period
 
 st.set_page_config(page_title="ZENITH-1-PRO", page_icon="🌀")
 
@@ -121,18 +122,19 @@ exponent_column, regime_column = st.columns(2)
 exponent_column.metric("Lyapunov exponent", exponent_display)
 regime_column.metric("Finite-time regime", regime)
 
-divergence_floor = 1e-16
-st.line_chart(
-    {
-        "log10 absolute divergence": [
-            log10(max(value, divergence_floor)) for value in divergence
-        ]
-    }
-)
-st.caption(
-    "Divergence is displayed as log10 absolute divergence with a numerical "
-    "floor of 1e-16."
-)
+st.subheader("Periodicity explorer")
+period_window = min(len(primary_orbit), 200)
+period_length = estimate_period(primary_orbit[-period_window:], max_period=min(64, period_window))
+period_label = "No stable short cycle detected" if period_length is None else f"{period_length} steps"
+st.metric("Detected cycle length", period_label)
+
+if period_length is not None:
+    periodic_tail = primary_orbit[-period_length:]
+    st.caption(
+        "The visible orbit tail was evaluated for the shortest repeating cycle "
+        "within a bounded tolerance."
+    )
+    st.line_chart({"Orbit tail": periodic_tail})
 
 st.subheader("Bifurcation diagram")
 if sweep_min >= sweep_max:
@@ -160,6 +162,19 @@ else:
         "growth rates. This finite sweep is exploratory, not a proof of "
         "long-term behavior."
     )
+
+divergence_floor = 1e-16
+st.line_chart(
+    {
+        "log10 absolute divergence": [
+            log10(max(value, divergence_floor)) for value in divergence
+        ]
+    }
+)
+st.caption(
+    "Divergence is displayed as log10 absolute divergence with a numerical "
+    "floor of 1e-16."
+)
 
 st.subheader("Last 10 iterations")
 tail_start = max(0, len(primary_orbit) - 10)
