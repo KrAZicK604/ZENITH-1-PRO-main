@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from logistic_map import logistic_orbit
 from trajectory_bound import GRID, trajectory_error_bounds
+from rational_oracle import verify_recurrence
 
 
 class TrajectoryBoundTest(unittest.TestCase):
@@ -50,3 +51,41 @@ class TrajectoryBoundTest(unittest.TestCase):
         with patch("rational_oracle.binary64_assumptions_hold", return_value=False):
             self.assertEqual(trajectory_error_bounds(4.0, 0.75, [0.75.hex()] * 2)[::2],
                              ("ABSTAIN", ()))
+
+    def test_caller_edit_after_validation_cannot_change_calculation(self):
+        # Deterministic scheduling point: use the real validator, then edit
+        # the caller-owned list before the calculation resumes.
+        for replacement in ("nan", "bad", 0.25.hex()):
+            orbit = [0.75.hex()] * 2
+
+            def validate_then_edit(*args):
+                result = verify_recurrence(*args)
+                orbit[1] = replacement
+                return result
+
+            with self.subTest(replacement=replacement):
+                with patch("trajectory_bound.verify_recurrence", side_effect=validate_then_edit):
+                    status, _, bounds = trajectory_error_bounds(4.0, 0.75, orbit)
+                self.assertEqual(status, "PASS")
+                self.assertEqual(bounds, (Fraction(0), Fraction(0)))
+
+    def test_caller_growth_after_validation_cannot_expand_work(self):
+        orbit = [0.75.hex()] * 2
+
+        def validate_then_grow(*args):
+            result = verify_recurrence(*args)
+            orbit.extend([0.75.hex()] * 2000)
+            return result
+
+        with patch("trajectory_bound.verify_recurrence", side_effect=validate_then_grow):
+            self.assertEqual(trajectory_error_bounds(4.0, 0.75, orbit)[2],
+                             (Fraction(0), Fraction(0)))
+
+    def test_rejects_custom_container_without_calling_its_copy(self):
+        class HostileList(list):
+            def copy(self):
+                raise AssertionError("custom container hook executed")
+
+        for orbit in (HostileList([0.75.hex()] * 2), tuple([0.75.hex()] * 2),
+                      None, [], [0.75.hex()] * 1002):
+            self.assertEqual(trajectory_error_bounds(4.0, 0.75, orbit)[::2], ("FAIL", ()))
