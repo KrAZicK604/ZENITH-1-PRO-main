@@ -75,6 +75,22 @@ authenticate a runner, authorize promotion or replace independent review.
 
 ### Running the verifier
 
+Metadata is validated before the Git comparison: timestamps use the generator's
+canonical `YYYY-MM-DDTHH:MM:SSZ` form and a valid calendar date, elapsed duration
+is a nonnegative integer (not a boolean), and Python version has three numeric
+components. The CI context must contain exactly the five generated string
+fields. A nonempty context SHA must equal the manifest commit; nonempty run IDs
+and attempts must be positive ASCII decimal strings. Empty context values remain
+permitted for local records. Generation applies the same metadata checks before
+writing a record.
+
+These are syntax/consistency checks only. A well-formed invented timestamp,
+duration, Python version or CI origin can still pass unsigned verification when
+the source bytes match. The trusted-main signing gate separately checks actual
+workflow context, and signature policy is a separate consumer verification step.
+No host clock, elapsed measurement, Python-runtime claim or sender is thereby
+authenticated. Malformed metadata produces an explicit CLI failure.
+
 Check out the manifest's exact git_head (on PRs this may be a generated merge
 commit rather than the branch tip). Download both files from the GitHub
 repro-evidence artifact into .evidence/ and run:

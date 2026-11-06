@@ -1,9 +1,12 @@
 """Negative and positive reproducibility-evidence tests (temporary Git repos)."""
 from __future__ import annotations
 import importlib.util
+import copy
 import json
 import hashlib
 import os
+import subprocess  # nosec B404 - fixed interpreter argv for an isolated CLI regression
+import sys
 from unittest.mock import patch
 import tempfile
 import unittest
@@ -300,6 +303,99 @@ class EvidenceTest(unittest.TestCase):
         self.path.write_bytes(b"stable")
         for _ in range(3):
             self.assertEqual(evidence.bounded_regular_bytes(self.path, 128), b"stable")
+
+    def test_invalid_host_timestamp_rejected(self):
+        original = evidence.generate(self.root, self.path)
+        values = ("not-a-date", "2026-02-30T12:00:00Z",
+                  "2026-01-01T00:00:00-07:00", True, None)
+        for value in values:
+            with self.subTest(value=value):
+                record = copy.deepcopy(original)
+                record["created_at_utc"] = value
+                self.write_hashed(json.dumps(record).encode())
+                with self.assertRaisesRegex(evidence.EvidenceError, "host UTC"):
+                    evidence.verify(self.root, self.path)
+
+    def test_invalid_duration_rejected_before_git(self):
+        original = evidence.generate(self.root, self.path)
+        for value in (-1, True, 1.5, "1", None):
+            with self.subTest(value=value):
+                record = copy.deepcopy(original)
+                record["elapsed_monotonic_ns"] = value
+                self.write_hashed(json.dumps(record).encode())
+                with patch.object(evidence, "git", side_effect=AssertionError("Git reached")):
+                    with self.assertRaisesRegex(evidence.EvidenceError, "monotonic duration"):
+                        evidence.verify(self.root, self.path)
+
+    def test_invalid_python_version_metadata_rejected(self):
+        original = evidence.generate(self.root, self.path)
+        for value in ("not-a-version", "3.14", True, None):
+            with self.subTest(value=value):
+                record = copy.deepcopy(original)
+                record["python_version"] = value
+                self.write_hashed(json.dumps(record).encode())
+                with self.assertRaisesRegex(evidence.EvidenceError, "Python version"):
+                    evidence.verify(self.root, self.path)
+
+    def test_invalid_ci_context_shape_rejected(self):
+        original = evidence.generate(self.root, self.path)
+        missing = dict(original["github_context"])
+        del missing["GITHUB_RUN_ID"]
+        extra = dict(original["github_context"], unknown="value")
+        for value in ([], None, missing, extra):
+            with self.subTest(value=value):
+                record = copy.deepcopy(original)
+                record["github_context"] = value
+                self.write_hashed(json.dumps(record).encode())
+                with self.assertRaisesRegex(evidence.EvidenceError, "context shape"):
+                    evidence.verify(self.root, self.path)
+
+    def test_invalid_ci_context_values_rejected(self):
+        original = evidence.generate(self.root, self.path)
+        values = (("GITHUB_REPOSITORY", 1), ("GITHUB_SHA", "not-a-sha"),
+                  ("GITHUB_SHA", "0" * 40), ("GITHUB_RUN_ID", "0"),
+                  ("GITHUB_RUN_ID", "-1"), ("GITHUB_RUN_ID", "１"),
+                  ("GITHUB_RUN_ATTEMPT", False))
+        for key, value in values:
+            with self.subTest(key=key, value=value):
+                record = copy.deepcopy(original)
+                record["github_context"][key] = value
+                self.write_hashed(json.dumps(record).encode())
+                with self.assertRaises(evidence.EvidenceError):
+                    evidence.verify(self.root, self.path)
+
+    def test_well_formed_host_claims_remain_unauthenticated(self):
+        record = evidence.generate(self.root, self.path)
+        record["created_at_utc"] = "2000-01-01T00:00:00Z"
+        record["elapsed_monotonic_ns"] = 0
+        record["python_version"] = "0.0.1"
+        record["github_context"].update({
+            "GITHUB_REPOSITORY": "Claimed/Repository", "GITHUB_SHA": record["git_head"],
+            "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "1", "GITHUB_EVENT_NAME": "push",
+        })
+        self.write_hashed(json.dumps(record).encode())
+        self.assertEqual(evidence.verify(self.root, self.path)["production_authority"], "NONE")
+
+    def test_generator_refuses_invalid_run_metadata_before_writing(self):
+        with patch.dict(os.environ, {"GITHUB_RUN_ID": "0"}):
+            with self.assertRaisesRegex(evidence.EvidenceError, "run identity format"):
+                evidence.generate(self.root, self.path)
+        self.assertFalse(self.path.exists())
+        self.assertFalse(self.path.with_name(self.path.name + ".sha256").exists())
+
+    def test_cli_malformed_metadata_reports_failure_without_traceback(self):
+        record = evidence.generate(self.root, self.path)
+        record["elapsed_monotonic_ns"] = -1
+        self.write_hashed(json.dumps(record).encode())
+        result = subprocess.run(  # nosec B603 - fixed absolute interpreter and controlled fixture paths
+            [sys.executable, str(ROOT / "scripts" / "repro_evidence.py"), "verify",
+             "--root", str(self.root), "--manifest", str(self.path)],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("EVIDENCE_FAIL: invalid monotonic duration", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertNotIn("EVIDENCE_VERIFIED", result.stdout)
 
 
 if __name__ == "__main__":

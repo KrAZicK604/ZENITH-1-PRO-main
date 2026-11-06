@@ -26,6 +26,12 @@ MAX_JSON_DEPTH = 16
 MAX_FILES = 4096
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
+UTC_TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
+PYTHON_VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+\Z")
+GITHUB_CONTEXT_KEYS = (
+    "GITHUB_REPOSITORY", "GITHUB_SHA", "GITHUB_RUN_ID",
+    "GITHUB_RUN_ATTEMPT", "GITHUB_EVENT_NAME",
+)
 
 
 class EvidenceError(ValueError):
@@ -129,6 +135,34 @@ def parse_manifest(raw: bytes) -> dict:
     if not isinstance(data, dict):
         raise EvidenceError("manifest must be a JSON object")
     return data
+
+
+def validate_metadata(data: dict) -> None:
+    """Validate format and internal consistency, not host truth or identity."""
+    stamp = data.get("created_at_utc")
+    if type(stamp) is not str or not UTC_TIMESTAMP.fullmatch(stamp):
+        raise EvidenceError("invalid host UTC timestamp")
+    try:
+        datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as error:
+        raise EvidenceError("invalid host UTC calendar value") from error
+    elapsed = data.get("elapsed_monotonic_ns")
+    if type(elapsed) is not int or elapsed < 0:
+        raise EvidenceError("invalid monotonic duration")
+    version = data.get("python_version")
+    if type(version) is not str or not PYTHON_VERSION.fullmatch(version):
+        raise EvidenceError("invalid Python version metadata")
+    context = data.get("github_context")
+    if (type(context) is not dict or set(context) != set(GITHUB_CONTEXT_KEYS)
+        or any(type(value) is not str for value in context.values())):
+        raise EvidenceError("invalid GitHub context shape")
+    sha = context["GITHUB_SHA"]
+    if sha and (not COMMIT.fullmatch(sha) or sha != data.get("git_head")):
+        raise EvidenceError("GitHub context SHA differs from manifest commit")
+    for key in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"):
+        value = context[key]
+        if value and (not value.isascii() or not value.isdecimal() or not value.strip("0")):
+            raise EvidenceError("invalid GitHub run identity format")
 
 
 def git(root: Path, *args: str) -> bytes:
@@ -249,13 +283,12 @@ def generate(root: Path, output: Path) -> dict:
         "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "elapsed_monotonic_ns": time.monotonic_ns() - started,
         "git_head": sha,
-        "github_context": {key: os.environ.get(key, "") for key in (
-            "GITHUB_REPOSITORY", "GITHUB_SHA", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_EVENT_NAME"
-        )},
+        "github_context": {key: os.environ.get(key, "") for key in GITHUB_CONTEXT_KEYS},
         "python_version": ".".join(map(str, sys.version_info[:3])),
         "file_count": len(entries),
         "files": entries,
     }
+    validate_metadata(evidence)
     checksum_path = output.with_name(output.name + ".sha256")
     if output.exists() or checksum_path.exists():
         raise EvidenceError("refuse to overwrite existing evidence")
@@ -296,6 +329,7 @@ def verify(root: Path, manifest: Path) -> dict:
         or data.get("integrity") != "SHA256_UNSIGNED_NO_EXTERNAL_ATTESTATION"
         or data.get("clock_provenance") != "HOST_CLOCK_UNATTESTED"):
         raise EvidenceError("invalid fail-closed evidence fields")
+    validate_metadata(data)
     if data.get("git_head") != commit_sha(root):
         raise EvidenceError("manifest is not for the checked-out Git commit")
     if (not isinstance(data.get("files"), list)
