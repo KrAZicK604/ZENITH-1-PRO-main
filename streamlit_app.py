@@ -2,6 +2,7 @@ from math import log10
 
 import streamlit as st
 
+from bifurcation import bifurcation_points
 from logistic_map import logistic_orbit, lyapunov_exponent
 
 st.set_page_config(page_title="ZENITH-1-PRO", page_icon="🌀")
@@ -35,6 +36,27 @@ with st.sidebar:
         max_value=500,
         value=100,
         step=10,
+    )
+
+with st.expander("Bifurcation explorer settings", expanded=False):
+    rate_min, rate_max = st.columns(2)
+    sweep_min = rate_min.number_input(
+        "Sweep start (r)", min_value=0.0, max_value=3.99, value=2.8, step=0.1
+    )
+    sweep_max = rate_max.number_input(
+        "Sweep end (r)", min_value=0.01, max_value=4.0, value=4.0, step=0.1
+    )
+    sweep_samples = st.number_input(
+        "Rate samples", min_value=2, max_value=100, value=80, step=1
+    )
+    sweep_iterations = st.number_input(
+        "Iterations per rate", min_value=10, max_value=1_000, value=400, step=10
+    )
+    sweep_discard = st.number_input(
+        "Discarded transient", min_value=0, max_value=999, value=300, step=10
+    )
+    sweep_points = st.number_input(
+        "Points per rate", min_value=1, max_value=100, value=40, step=1
     )
 
 st.latex(r"x_{n+1} = r x_n (1 - x_n)")
@@ -111,6 +133,33 @@ st.caption(
     "Divergence is displayed as log10 absolute divergence with a numerical "
     "floor of 1e-16."
 )
+
+st.subheader("Bifurcation diagram")
+if sweep_min >= sweep_max:
+    st.warning("Choose a sweep start that is less than the sweep end.")
+else:
+    sweep_discard = min(int(sweep_discard), int(sweep_iterations) - 1)
+    diagram = bifurcation_points(
+        float(sweep_min),
+        float(sweep_max),
+        rate_samples=int(sweep_samples),
+        iterations=int(sweep_iterations),
+        discard=sweep_discard,
+        points_per_rate=int(sweep_points),
+    )
+    st.scatter_chart(
+        {
+            "Growth rate (r)": [point[0] for point in diagram],
+            "State (x)": [point[1] for point in diagram],
+        },
+        x="Growth rate (r)",
+        y="State (x)",
+    )
+    st.caption(
+        f"{len(diagram):,} deterministic samples across {int(sweep_samples)} "
+        "growth rates. This finite sweep is exploratory, not a proof of "
+        "long-term behavior."
+    )
 
 st.subheader("Last 10 iterations")
 tail_start = max(0, len(primary_orbit) - 10)
