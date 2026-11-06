@@ -170,7 +170,7 @@ def git(root: Path, *args: str) -> bytes:
     if not git_executable or not Path(git_executable).is_absolute():
         raise EvidenceError("absolute git executable not available")
     process = subprocess.run(  # nosec B603 - absolute Git path, argument array, shell=False
-        [git_executable, "-c", "core.fsmonitor=false", "-C", str(root), *args],
+        [git_executable, "--no-replace-objects", "-c", "core.fsmonitor=false", "-C", str(root), *args],
         capture_output=True, check=False
     )
     if process.returncode:
