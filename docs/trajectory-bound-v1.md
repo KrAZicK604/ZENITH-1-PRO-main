@@ -28,6 +28,14 @@ At most 1,001 states are accepted. Exact residual denominators have fixed
 binary64-derived size, so repeated propagation cannot grow rational
 denominators without bound. The existing bounded-input limits still apply.
 
+The API accepts only a built-in list within the length budget before making
+a shallow private snapshot. The validator checks that snapshot, including
+its length and immutable string elements; calculation uses the same copy.
+Edits to the caller's list after validation therefore cannot change the
+calculation or expand its work. Tests inject deterministic edits between
+validation and calculation. This is not process isolation or a guarantee
+against arbitrary interpreter/memory tampering or concurrent resource use.
+
 PASS means an enclosure was constructed. A bound of one is uninformative
 beyond the invariant interval, and is expected after enough chaotic steps.
 The bound is conservative and need not increase monotonically: contraction
