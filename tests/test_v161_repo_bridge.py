@@ -119,6 +119,25 @@ class RepoBridgeUnitTest(unittest.TestCase):
                      trust_pin=self.policy_pin,statement_file=self.statement,
                      competitor_file=competitor)
 
+    def test_source_and_handoff_are_verified_from_stable_copies(self):
+        import zenith_v160_bridge as bridge
+        real_verify=bridge.verify_handoff
+        original_evidence=self.evidence.read_bytes()
+        original_handoff=self.handoff.read_bytes()
+        def change_original_after_replay(handoff_copy,evidence_copy):
+            self.assertNotEqual(evidence_copy,self.evidence)
+            self.assertNotEqual(handoff_copy,self.handoff)
+            self.assertEqual(evidence_copy.read_bytes(),original_evidence)
+            self.assertEqual(handoff_copy.read_bytes(),original_handoff)
+            result=real_verify(handoff_copy,evidence_copy)
+            self.evidence.write_bytes(b'source overwritten after staging')
+            self.handoff.write_bytes(b'handoff overwritten after staging')
+            return result
+        with mock.patch('zenith_v160_bridge.verify_handoff',side_effect=change_original_after_replay):
+            assessment=self.verify()
+        self.assertEqual(assessment['result'],'CRYPTO_VALID_EXTERNAL_RETENTION_ABSTAIN')
+        self.assertNotEqual(self.evidence.read_bytes(),original_evidence)
+
     def test_valid_exact_signed_subject_tip_pair(self):
         r=self.verify()
         self.assertEqual(r['result'],'CRYPTO_VALID_EXTERNAL_RETENTION_ABSTAIN')
