@@ -262,17 +262,25 @@ def verify_files(*, evidence: Path, handoff: Path, kit: Path, database: Path,
     # Import only our repository's existing V160 bridge. The installed executable
     # must be trusted; a valid response does not prove a non-hostile Python runtime.
     from zenith_v160_bridge import audit_v160, verify_handoff
-    verified = verify_handoff(handoff, evidence)
-    if verified['result'] != 'LOCAL_EVIDENCE_AND_UNSIGNED_HANDOFF_MATCH':
-        raise Reject('ZENITH_RECORD_NOT_VERIFIED')
-    def load(path: Path) -> dict:
-        raw = read_file(path)
+    def load(raw: bytes) -> dict:
         return strict_json(raw[:-1] if raw.endswith(b'\n') else raw)
-    h = load(handoff)
-    policy = load(trust_file)
-    statement = load(statement_file)
+    # Verify one stable private copy of source and unsigned handoff. Reopening
+    # original paths between replay and signature checking creates a TOCTOU gap.
     with tempfile.TemporaryDirectory(prefix='zenith_v161_snapshot_') as td:
-        snap = Path(td) / 'register_snapshot.db'
+        root = Path(td)
+        evidence_bytes = read_file(evidence, cap=100_000)
+        handoff_bytes = read_file(handoff, cap=4096)
+        source_copy = root / 'evidence_copy.json'
+        handoff_copy = root / 'handoff_copy.json'
+        with source_copy.open('xb') as out: out.write(evidence_bytes)
+        with handoff_copy.open('xb') as out: out.write(handoff_bytes)
+        verified = verify_handoff(handoff_copy, source_copy)
+        if verified['result'] != 'LOCAL_EVIDENCE_AND_UNSIGNED_HANDOFF_MATCH':
+            raise Reject('ZENITH_RECORD_NOT_VERIFIED')
+        h = load(handoff_bytes)
+        policy = load(read_file(trust_file))
+        statement = load(read_file(statement_file))
+        snap = root / 'register_snapshot.db'
         snapshot_db(database, snap)
         audited = audit_v160(kit, snap, trusted_tip, trusted_genesis)
         # PR #67's bridge returns the verified tip but not the genesis. Its
@@ -290,7 +298,7 @@ def verify_files(*, evidence: Path, handoff: Path, kit: Path, database: Path,
         expected = expected_binding(h, audited, scope, policy, trust_sha, nonce)
         claim_hash = check_statement(statement, policy, expected)
         if competitor_file is not None:
-            competitor = load(competitor_file)
+            competitor = load(read_file(competitor_file))
             # Authenticate competitor before deciding whether there is equivocation.
             other_body = competitor.get('body')
             if type(other_body) is not dict: raise Reject('COMPETITOR_BODY')
