@@ -249,7 +249,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             response = audit_v160(args.kit, args.database, args.expected_tip, args.genesis_pin)
         print(json.dumps(response, sort_keys=True, separators=(",", ":")))
-        return 0
+        # Authenticated equivocation must exit nonzero, not become approval.
+        return 3 if response.get("result") == "ABSTAIN_AUTHENTICATED_CONFLICT" else 0
     except (BridgeError, KeyError, TypeError, ValueError, OSError) as exc:
         print(json.dumps({"result": "REJECT", "reason": str(exc)[:180],
                           "productionAuthority": "NONE"}, sort_keys=True))
