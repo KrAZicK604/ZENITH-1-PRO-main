@@ -10,6 +10,7 @@ from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
+from shutil import which
 import subprocess  # nosec B404 - isolated test key generation only
 import sys
 import tempfile
@@ -29,7 +30,9 @@ import v161_subject_binding as v
 
 
 def openssl(*argv):
-    p=subprocess.run(['openssl',*map(str,argv)],capture_output=True,timeout=10,check=False)  # nosec B603
+    executable=which('openssl')
+    if executable is None: raise AssertionError('OpenSSL not installed')
+    p=subprocess.run([executable,*map(str,argv)],capture_output=True,timeout=10,check=False)  # nosec B603
     if p.returncode:raise AssertionError(p.stderr.decode(errors='replace'))
     return p.stdout
 
@@ -46,7 +49,7 @@ class RepoBridgeUnitTest(unittest.TestCase):
             openssl('genpkey','-algorithm','Ed25519','-out',priv)
             openssl('pkey','-in',priv,'-pubout','-outform','DER','-out',pub)
             der=pub.read_bytes()
-            assert der.startswith(v.SPKI_PREFIX)
+            if not der.startswith(v.SPKI_PREFIX): raise AssertionError("Unexpected OpenSSL DER SPKI")
             cls.keys[role]=(priv,der[len(v.SPKI_PREFIX):].hex())
         cls.stream='2'*64;cls.session='3'*64;cls.genesis='4'*64;cls.tip='5'*64
         cls.policy={'schema':v.TRUST_SCHEMA,'repository':v.REPO,'system':'ZENITH',
