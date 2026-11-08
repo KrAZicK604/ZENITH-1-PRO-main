@@ -5,6 +5,8 @@ V160's *real* register is independently exercised in the local research kit.
 """
 from __future__ import annotations
 import importlib.util
+import copy
+from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
@@ -62,6 +64,9 @@ class RepoBridgeUnitTest(unittest.TestCase):
         self.work=tempfile.TemporaryDirectory()
         self.addCleanup(self.work.cleanup)
         root=Path(self.work.name)
+        # Never mutate class-scoped trust across test cases.
+        self.policy=copy.deepcopy(type(self).policy)
+        self.policy_pin=v.sha(v.canonical(self.policy))
         self.evidence=root/'evidence.json';self.handoff=root/'handoff.json'
         self.trust=root/'trust.json';self.statement=root/'signed.json'
         self.db=root/'current.db';self.kit=root/'unused_kit.zip'
@@ -71,7 +76,7 @@ class RepoBridgeUnitTest(unittest.TestCase):
         self.handoff.write_bytes(v.canonical(self.unsigned)+b'\n')
         self.trust.write_bytes(v.canonical(self.policy)+b'\n')
         # The fake table is only for scope tests; V160 audit is mocked in this class.
-        with sqlite3.connect(self.db) as c:
+        with closing(sqlite3.connect(self.db)) as c:
             c.execute('CREATE TABLE events (seq INTEGER PRIMARY KEY, record BLOB)')
             seq=0
             for stage in ('PRIOR_CHECKPOINT','NEW_CHECKPOINT'):
@@ -81,6 +86,7 @@ class RepoBridgeUnitTest(unittest.TestCase):
                         'system':'ZENITH', 'stream_id':self.stream,
                         'session_id':self.session,'stage':stage,'monitor_id':monitor,
                         'monitor_public_hex':('6' if idx==0 else '7')*64})))
+            c.commit()
         self.audited={'result':'LOCAL_HASH_CHAIN_VALID_EXTERNAL_RETENTION_UNVERIFIED',
                       'events':4,'tip':self.tip,'genesis':self.genesis,
                       'v160_kit_sha256':self.unsigned['handoff']['v160_kit_sha256'],
