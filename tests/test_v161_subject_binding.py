@@ -1,6 +1,8 @@
 """V161 generated-at-test-time Ed25519 keys and negative binding regression."""
 from __future__ import annotations
 import copy
+import hashlib
+from shutil import which
 import json
 import os
 from pathlib import Path
@@ -21,7 +23,9 @@ KIT = Path('/mnt/data/QOIIN_ZENITH_V160_OFFLINE_REVIEW_KIT_VERIFIED.zip')
 
 
 def cmd(*argv):
-    p = subprocess.run(['openssl', *map(str, argv)], capture_output=True, timeout=10, check=False)  # nosec B603
+    executable=which('openssl')
+    if executable is None: raise AssertionError('OpenSSL not installed')
+    p = subprocess.run([executable, *map(str, argv)], capture_output=True, timeout=10, check=False)  # nosec B603
     if p.returncode: raise AssertionError(p.stderr.decode('utf-8', errors='replace'))
     return p.stdout
 
@@ -37,7 +41,7 @@ class BindingTest(unittest.TestCase):
             cmd('genpkey','-algorithm','Ed25519','-out',prv)
             cmd('pkey','-in',prv,'-pubout','-outform','DER','-out',pub)
             der=pub.read_bytes()
-            assert der.startswith(v.SPKI_PREFIX)
+            if not der.startswith(v.SPKI_PREFIX): raise AssertionError("Unexpected OpenSSL DER SPKI")
             cls.keys[role]=(prv,der[len(v.SPKI_PREFIX):].hex())
         cls.policy={
           'schema':v.TRUST_SCHEMA,'repository':v.REPO,'system':'ZENITH',
@@ -80,13 +84,12 @@ class BindingTest(unittest.TestCase):
                          v.sha(v.DOMAIN+v.canonical(self.body)))
 
     def test_256_seeded_signature_mutations_rejected(self):
-        import random
-        rng=random.Random(161160)
         original=self.statement()
         for i in range(256):
             changed=copy.deepcopy(original)
             sig=bytearray.fromhex(changed['signatures'][i%2]['signature_hex'])
-            sig[rng.randrange(64)] ^= 1 << rng.randrange(8)
+            entropy=hashlib.sha256(f'v161-mutation-{i}'.encode()).digest()
+            sig[entropy[0]%64] ^= 1 << (entropy[1]%8)
             changed['signatures'][i%2]['signature_hex']=sig.hex()
             with self.subTest(i=i),self.assertRaisesRegex(v.Reject,'SIGNATURE_INVALID'):
                 v.check_statement(changed,self.policy,self.body)
