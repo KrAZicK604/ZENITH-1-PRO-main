@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import re
+from shutil import which
 import sqlite3
 import stat
 import subprocess  # nosec B404 - fixed openssl binary, no shell
@@ -103,9 +104,11 @@ def _ed25519_verify(public_hex: str, signature_hex: str, message: bytes) -> None
         root = Path(td)
         pub = root / 'public.pem'; msg = root / 'message'; sig = root / 'sig'
         pub.write_bytes(pem); msg.write_bytes(message); sig.write_bytes(bytes.fromhex(signature_hex))
+        openssl = which('openssl')
+        if openssl is None: raise Reject('OPENSSL_UNAVAILABLE')
         try:
-            completed = subprocess.run(  # nosec B603 - fixed argv, shell disabled
-                ['openssl', 'pkeyutl', '-verify', '-pubin', '-inkey', str(pub), '-rawin',
+            completed = subprocess.run(  # nosec B603 - resolved verifier binary, no shell
+                [openssl, 'pkeyutl', '-verify', '-pubin', '-inkey', str(pub), '-rawin',
                  '-in', str(msg), '-sigfile', str(sig)],
                 capture_output=True, timeout=5, check=False,
                 env={'PATH': os.defpath},
