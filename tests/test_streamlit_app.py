@@ -1,3 +1,4 @@
+import tomllib
 import unittest
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -5,12 +6,17 @@ from pathlib import Path
 from streamlit.testing.v1 import AppTest
 
 
-STREAMLIT_VERSION = "1.66.1"
-
-
 class StreamlitAppSmokeTest(unittest.TestCase):
     def test_runtime_uses_locked_streamlit_version(self) -> None:
-        self.assertEqual(package_version("streamlit"), STREAMLIT_VERSION)
+        lock_path = Path(__file__).parents[1] / "uv.lock"
+        lock_data = tomllib.loads(lock_path.read_text(encoding="utf-8"))
+        versions = [
+            package["version"]
+            for package in lock_data["package"]
+            if package["name"] == "streamlit"
+        ]
+        self.assertEqual(len(versions), 1, "Expected exactly one locked Streamlit version")
+        self.assertEqual(package_version("streamlit"), versions[0])
 
     def test_entry_point_renders_without_exceptions(self) -> None:
         app_path = Path(__file__).parents[1] / "streamlit_app.py"
