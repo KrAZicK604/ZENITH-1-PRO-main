@@ -5,7 +5,7 @@ from pathlib import Path
 from streamlit.testing.v1 import AppTest
 
 
-STREAMLIT_VERSION = "1.66.1"
+STREAMLIT_VERSION = "1.67.0"
 
 
 class StreamlitAppSmokeTest(unittest.TestCase):
